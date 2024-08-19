@@ -1,3 +1,65 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: myconfigmap
+data:
+  db-port: "3307"
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: my-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: sample-api
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 20
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 20
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: api-pv
+  labels:
+    app: api-pv
+spec:
+  accessModes:
+    - ReadWriteOnce
+  capacity:
+    storage: 1Gi
+  hostPath:
+    path: /mnt/efs
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: api-pvc
+  namespace: default
+spec:
+  resources:
+    requests:
+      storage: 1Gi  # Define the desired storage capacity
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -57,4 +119,17 @@ spec:
         - name: api-storage
           persistentVolumeClaim:
             claimName: api-pvc
-
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-lb
+spec:
+  selector:
+    app: sample-app
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 7000
+  type: LoadBalancer

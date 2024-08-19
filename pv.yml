@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: api-pv
+  labels:
+    app: api-pv
+spec:
+  accessModes:
+    - ReadWriteOnce
+  capacity:
+    storage: 1Gi
+  hostPath:
+    path: /mnt/efs
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual

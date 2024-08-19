@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: api-pvc
+  namespace: default
+spec:
+  resources:
+    requests:
+      storage: 1Gi  # Define the desired storage capacity
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
