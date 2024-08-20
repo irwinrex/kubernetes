@@ -1,3 +1,8 @@
+note : Testing the files to fully operatable 
+
+Working on : Daemon set ( node exporter, etc.. )
+             statefull set ( Database )
+
 ## Kubernetes Commands
 
 k8 : minikube or k3
