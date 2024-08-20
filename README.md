@@ -17,6 +17,7 @@ Components:
 git clone https://github.com/irwinrex/kubernetes.git
 chmod +x shellscripts/*.sh
 sh install_k3.sh or sh install_minikube.sh
+sh install_helm.sh
 sh install_metrics.sh
 eval $(minikube docker-env)       # if you install k3 please skip this
 docker pull dockerrexxzz/dj:latest
