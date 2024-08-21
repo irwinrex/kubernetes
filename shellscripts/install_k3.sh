@@ -14,13 +14,13 @@ mkdir -p ~/.kube/
 touch ~/.kube/config
 
 # Copy the K3s kubeconfig file to the .kube/config file
-cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
 
-# Change ownership of the kube config file
-chown $(id -u):$(id -g) ~/.kube/config
+# Change Permission
+chmod 600 ~/.kube/config
 
 # Verify K3s installation
-k3s kubectl get nodes
+sudo k3s kubectl get nodes
 
 # Provide feedback on completion
 echo "K3s installation complete! Kubernetes is running and kube config is set up."

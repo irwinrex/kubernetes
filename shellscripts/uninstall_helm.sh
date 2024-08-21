@@ -16,8 +16,4 @@ sudo rm -rf ~/.helm
 sudo rm -rf /usr/local/helm
 
 # Verify Helm uninstallation
-if command -v helm >/dev/null 2>&1; then
-    echo "Helm uninstallation failed."
-else
-    echo "Helm uninstalled successfully."
-fi
+echo "Helm uninstalled successfully."

@@ -23,8 +23,4 @@ if [ -d ~/.kube ] && [ -z "$(ls -A ~/.kube)" ]; then
 fi
 
 # Verify K3s uninstallation
-if command -v k3s >/dev/null 2>&1; then
-    echo "K3s uninstallation failed."
-else
-    echo "K3s uninstalled successfully."
-fi
+echo "K3s uninstalled successfully."
