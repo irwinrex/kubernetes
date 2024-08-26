@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Download and install K3s
-curl -sfL https://get.k3s.io | sh -s - --disable metrics-server
+curl -sfL https://get.k3s.io | sh -s - --disable traefik,metrics-server
+
 
 # Wait for K3s to start
 echo "Waiting for K3s to start..."

@@ -21,10 +21,10 @@ metadata:
   name: my-lb
 spec:
   selector:
-    app: sample-app
+    app: sample-api
   ports:
     - name: http
       protocol: TCP
-      port: 80
+      port: 8000
       targetPort: 7000
-  type: LoadBalancer
+  type: ClusterIP

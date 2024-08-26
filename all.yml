@@ -1,9 +1,21 @@
 apiVersion: v1
+kind: Secret
+metadata:
+  name: secret-env
+type: Opaque
+data:
+  bye: "Ynll"  # Ensure this value is base64 encoded
+
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: myconfigmap
+  name: secrets-json
 data:
-  db-port: "3307"
+  secrets.json: |
+    {
+      "hai": "hai"
+    }
 
 ---
 apiVersion: autoscaling/v2
@@ -65,7 +77,7 @@ kind: Deployment
 metadata:
   name: sample-api
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: sample-api
@@ -83,8 +95,11 @@ spec:
           mountPath: /mnt/efs
       containers:
       - name: sample-api
-        image: dockerrexxzz/dj:latest # Replace with your Docker image name and tag
+        image: dockerrexxzz/dj:v1 # Replace with your Docker image name and tag
         imagePullPolicy: Always
+        envFrom:
+        - secretRef:
+            name: secret-env
         resources:
           limits:
             memory: "250Mi" # Adjust the memory limit as per your requirements
@@ -93,7 +108,7 @@ spec:
             memory: "125Mi"
             cpu: "0.1"
         ports:
-        - name: api
+        - name: sample-port
           containerPort: 7000
         readinessProbe:
           httpGet:
@@ -107,30 +122,49 @@ spec:
             port: 7000
           initialDelaySeconds: 15
         volumeMounts:
-        - name: api-config
-          mountPath: /app/secrets.json
-          subPath: secrets.json
         - name: api-storage
           mountPath: /mnt/efs
+        - name: secret-json
+          mountPath: /app/config/secrets.json
+          subPath: secrets.json
       volumes:
-      - name: api-config
-        configMap:
-          name: myconfigmap
       - name: api-storage
         persistentVolumeClaim:
           claimName: api-pvc
-
+      - name: secret-json
+        configMap:
+          name: secrets-json
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: my-lb
+  name: sample-service
 spec:
   selector:
-    app: sample-app
+    app: sample-service
   ports:
-    - name: http
+    - name: sample-service
       protocol: TCP
-      port: 80
-      targetPort: 7000
-  type: LoadBalancer
+      port: 8000
+      targetPort: sample-port
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sample-ingress
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web # Specify the Traefik entry point
+spec:
+  rules:
+  - host: sample-ing.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: sample-service
+            port:
+              number: 8000 # Use the port number defined in your Service
+

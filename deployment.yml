@@ -21,8 +21,11 @@ spec:
           mountPath: /mnt/efs
       containers:
       - name: sample-api
-        image: dockerrexxzz/dj:latest # Replace with your Docker image name and tag
+        image: dockerrexxzz/dj:v1 # Replace with your Docker image name and tag
         imagePullPolicy: Always
+        envFrom:
+        - secretRef:
+            name: secret-env
         resources:
           limits:
             memory: "250Mi" # Adjust the memory limit as per your requirements
@@ -45,15 +48,15 @@ spec:
             port: 7000
           initialDelaySeconds: 15
         volumeMounts:
-        - name: api-config
-          mountPath: /app/secrets.json
-          subPath: secrets.json
         - name: api-storage
           mountPath: /mnt/efs
+        - name: secret-json
+          mountPath: /app/configs/secrets.json
+          subPath: secrets.json
       volumes:
-      - name: api-config
-        configMap:
-          name: myconfigmap
       - name: api-storage
         persistentVolumeClaim:
           claimName: api-pvc
+      - name: secret-json
+        configMap:
+          name: secrets-json
