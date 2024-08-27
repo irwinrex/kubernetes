@@ -19,16 +19,15 @@ chmod +x shellscripts/*.sh
 sh shellscripts/install_k3.sh or sh shellscripts/install_minikube.sh
 sh shellscripts/install_helm.sh
 sh shellscripts/install_metrics.sh
+sudo ufw allow 6443/tcp #apiserver
+sudo ufw allow from 10.42.0.0/16 to any #pods
+sudo ufw allow from 10.43.0.0/16 to any #services
 eval $(minikube docker-env)       # if you install k3 please skip this
 docker pull dockerrexxzz/dj:latest
 kubectl apply -f all.yml
 minikube addon enable ingress     # if you install k3 please skip this
-kubectl apply -f ingress.yml
-kubectl get pod -n ingress-nginx
-kubectl get pod -A | grep nginx --> check the container is running
-kubectl get ingress --> copy the address
-sudo nano /etc/hosts --> paste it and name it foo.bar.com (domain mapping in local)
-curl -L http://foo.bar.com or Open in Browser
+sudo nano /etc/hosts --> 127.0.0.1 sample-ing.local   (domain mapping in local)
+curl -L http://sample-ing.local  or Open in Browser
 ```
 ## To uninstall
 

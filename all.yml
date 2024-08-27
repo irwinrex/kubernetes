@@ -42,6 +42,7 @@ spec:
       target:
         type: Utilization
         averageUtilization: 20
+
 ---
 apiVersion: v1
 kind: PersistentVolume
@@ -58,6 +59,7 @@ spec:
     path: /mnt/efs
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
+
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -71,6 +73,7 @@ spec:
   accessModes:
     - ReadWriteOnce
   storageClassName: manual
+
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -103,10 +106,10 @@ spec:
         resources:
           limits:
             memory: "250Mi" # Adjust the memory limit as per your requirements
-            cpu: "0.25"     # Adjust the CPU limit as per your requirements
+            cpu: "250m"     # Adjust the CPU limit as per your requirements
           requests:
             memory: "125Mi"
-            cpu: "0.1"
+            cpu: "100m"
         ports:
         - name: sample-port
           containerPort: 7000
@@ -134,6 +137,7 @@ spec:
       - name: secret-json
         configMap:
           name: secrets-json
+
 ---
 apiVersion: v1
 kind: Service
@@ -141,23 +145,24 @@ metadata:
   name: sample-service
 spec:
   selector:
-    app: sample-service
+    app: sample-api  # This should match the label in the deployment template
   ports:
-    - name: sample-service
+    - name: sample-port
       protocol: TCP
       port: 8000
       targetPort: sample-port
   type: ClusterIP
+
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: sample-ingress
   annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: web # Specify the Traefik entry point
+    traefik.ingress.kubernetes.io/router.entrypoints: web
 spec:
   rules:
-  - host: sample-ing.local
+  - host: sample-ing.local  # Replace with your domain or use nip.io for testing
     http:
       paths:
       - path: /
@@ -166,5 +171,4 @@ spec:
           service:
             name: sample-service
             port:
-              number: 8000 # Use the port number defined in your Service
-
+              number: 8000
