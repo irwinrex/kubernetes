@@ -1,13 +1,4 @@
 apiVersion: v1
-kind: Secret
-metadata:
-  name: secrets-env
-type: Opaque
-data:
-  bye: "Ynll"
-
----
-apiVersion: v1
 kind: ConfigMap
 metadata:
   name: secrets-json

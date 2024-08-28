@@ -14,11 +14,12 @@ mkdir -p ~/.kube/
 # Create the kube config file
 touch ~/.kube/config
 
-# Copy the K3s kubeconfig file to the .kube/config file
-sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
-
 # Change Permission
 chmod 600 ~/.kube/config
+chmod 700 /etc/rancher/k3s/k3s.yaml
+
+# Copy the K3s kubeconfig file to the .kube/config file
+sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
 
 # Verify K3s installation
 sudo k3s kubectl get nodes

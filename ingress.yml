@@ -6,13 +6,13 @@ metadata:
     traefik.ingress.kubernetes.io/router.entrypoints: web
 spec:
   rules:
-  - host: sample-ing.local  # Replace with your domain or use nip.io for testing
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: sample-service
-            port:
-              number: 8000
+    - host: sample-ing.local  # Replace with your domain or use nip.io for testing
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: sample-service
+                port:
+                  number: 8000
