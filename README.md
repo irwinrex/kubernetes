@@ -25,9 +25,10 @@ sudo ufw allow from 10.43.0.0/16 to any #services
 eval $(minikube docker-env)       # if you install k3 please skip this
 docker pull dockerrexxzz/dj:latest
 kubectl apply -f all.yml
-minikube addon enable ingress     # if you install k3 please skip this
+kubectl port-forward svc/sample-service 8000:8000
+<!-- minikube addon enable ingress     # if you install k3 please skip this
 sudo nano /etc/hosts --> 127.0.0.1 sample-ing.local   (domain mapping in local)
-curl -L http://sample-ing.local  or Open in Browser
+curl -L http://sample-ing.local  or Open in Browser -->
 ```
 ## To uninstall
 
