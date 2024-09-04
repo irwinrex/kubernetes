@@ -1,3 +1,4 @@
+# PersistentVolume definition for EFS storage
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -6,10 +7,10 @@ metadata:
     app: api-pv
 spec:
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteOnce  # Defines how the volume can be accessed
   capacity:
-    storage: 1Gi
+    storage: 1Gi  # Storage capacity of the PV
   hostPath:
-    path: /mnt/efs
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
+    path: /mnt/efs  # Path on the host where the PV is mounted
+  persistentVolumeReclaimPolicy: Retain  # Retain the PV after it's released
+  storageClassName: manual  # Custom storage class

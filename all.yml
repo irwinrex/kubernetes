@@ -1,3 +1,4 @@
+# Secret definition for environment variables
 apiVersion: v1
 kind: Secret
 metadata:
@@ -7,6 +8,7 @@ data:
   bye: "Ynll"  # Ensure this value is base64 encoded
 
 ---
+# ConfigMap containing a JSON file as data
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -18,6 +20,7 @@ data:
     }
 
 ---
+# HorizontalPodAutoscaler to scale the Deployment based on CPU and memory utilization
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -26,24 +29,25 @@ spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: sample-api
-  minReplicas: 1
-  maxReplicas: 3
+    name: sample-api  # Target deployment to be scaled
+  minReplicas: 1  # Minimum number of replicas
+  maxReplicas: 3  # Maximum number of replicas
   metrics:
   - type: Resource
     resource:
       name: cpu
       target:
         type: Utilization
-        averageUtilization: 80
+        averageUtilization: 80  # Target CPU utilization percentage
   - type: Resource
     resource:
       name: memory
       target:
         type: Utilization
-        averageUtilization: 80
+        averageUtilization: 80  # Target memory utilization percentage
 
 ---
+# PersistentVolume definition for EFS storage
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -52,15 +56,16 @@ metadata:
     app: api-pv
 spec:
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteOnce  # Defines how the volume can be accessed
   capacity:
-    storage: 1Gi
+    storage: 1Gi  # Storage capacity of the PV
   hostPath:
-    path: /mnt/efs
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
+    path: /mnt/efs  # Path on the host where the PV is mounted
+  persistentVolumeReclaimPolicy: Retain  # Retain the PV after it's released
+  storageClassName: manual  # Custom storage class
 
 ---
+# PersistentVolumeClaim to request storage from the PersistentVolume
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -71,38 +76,43 @@ spec:
     requests:
       storage: 1Gi  # Define the desired storage capacity
   accessModes:
-    - ReadWriteOnce
-  storageClassName: manual
+    - ReadWriteOnce  # Define how the PVC can be accessed
+  storageClassName: manual  # Match the PV's storage class
 
 ---
+# Deployment definition for the sample-api application
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: sample-api
 spec:
-  replicas: 1
+  replicas: 1  # Number of desired replicas
   selector:
     matchLabels:
-      app: sample-api
+      app: sample-api  # Label selector for the pods
   template:
     metadata:
       labels:
-        app: sample-api
+        app: sample-api  # Labels for the pods
     spec:
+      securityContext:
+        runAsUser: 1000  # User ID to run the application
+        runAsGroup: 1000  # Group ID to run the application
+        fsGroup: 2000  # Group ID for file system permissions
       initContainers:
       - name: setup-permissions
         image: busybox
         command: ["sh", "-c", "chmod 777 -R /mnt/efs"]  # Set permissions for the volume
         volumeMounts:
           - name: api-storage
-            mountPath: /mnt/efs
+            mountPath: /mnt/efs  # Mount the EFS volume
       containers:
       - name: sample-api
         image: dockerrexxzz/dj:v1  # Replace with your Docker image name and tag
         imagePullPolicy: Always
         envFrom:
           - secretRef:
-              name: secret-env
+              name: secret-env  # Environment variables from Secret
         resources:
           limits:
             memory: "256Mi"  # Adjust the memory limit as per your requirements
@@ -112,63 +122,65 @@ spec:
             cpu: "100m"
         ports:
           - name: sample-port
-            containerPort: 7000
+            containerPort: 7000  # Application port
         readinessProbe:
           httpGet:
-            path: /home  # Adjust the path based on your application's health check endpoint
+            path: /home  # Health check path
             port: 7000
-          initialDelaySeconds: 10
-          periodSeconds: 5
+          initialDelaySeconds: 10  # Delay before the first probe
+          periodSeconds: 5  # Frequency of probe
         livenessProbe:
           httpGet:
-            path: /home  # Adjust the path based on your application's health check endpoint
+            path: /home  # Health check path
             port: 7000
-          initialDelaySeconds: 15
+          initialDelaySeconds: 15  # Delay before the first probe
         volumeMounts:
           - name: api-storage
-            mountPath: /mnt/efs
+            mountPath: /mnt/efs  # Mount the EFS volume inside the container
           - name: secret-json
-            mountPath: /app/config/secrets.json
-            subPath: secrets.json
+            mountPath: /app/config/secrets.json  # Mount the ConfigMap file
+            subPath: secrets.json  # Use subPath to map a specific file
       volumes:
         - name: api-storage
           persistentVolumeClaim:
-            claimName: api-pvc
+            claimName: api-pvc  # Use the PVC for storage
         - name: secret-json
           configMap:
-            name: secrets-json
+            name: secrets-json  # Use the ConfigMap for secrets.json
 
 ---
+# Service to expose the sample-api application within the cluster
 apiVersion: v1
 kind: Service
 metadata:
   name: sample-service
 spec:
   selector:
-    app: sample-api  # This should match the label in the deployment template
+    app: sample-api  # Match pods with this label
   ports:
     - name: sample-port
       protocol: TCP
-      port: 8000
-      targetPort: sample-port
-  type: ClusterIP
+      port: 8000  # Service port
+      targetPort: sample-port  # Port on the pod
+  type: ClusterIP  # Service type
 
 ---
+# Ingress resource to route traffic to the sample-service
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: sample-ingress
   annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.entrypoints: web  # Use the "web" entrypoint in Traefik
 spec:
   rules:
     - host: sample-ing.local  # Replace with your domain or use nip.io for testing
       http:
         paths:
           - path: /
-            pathType: Prefix
+            pathType: Prefix  # Path type can be Exact or Prefix
             backend:
               service:
-                name: sample-service
+                name: sample-service  # Service name to route traffic to
                 port:
-                  number: 8000
+                  number: 8000  # Service port

@@ -1,31 +1,36 @@
+# Deployment definition for the sample-api application
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: sample-api
 spec:
-  replicas: 1
+  replicas: 1  # Number of desired replicas
   selector:
     matchLabels:
-      app: sample-api
+      app: sample-api  # Label selector for the pods
   template:
     metadata:
       labels:
-        app: sample-api
+        app: sample-api  # Labels for the pods
     spec:
+      securityContext:
+        runAsUser: 1000  # User ID to run the application
+        runAsGroup: 1000  # Group ID to run the application
+        fsGroup: 2000  # Group ID for file system permissions
       initContainers:
       - name: setup-permissions
         image: busybox
         command: ["sh", "-c", "chmod 777 -R /mnt/efs"]  # Set permissions for the volume
         volumeMounts:
           - name: api-storage
-            mountPath: /mnt/efs
+            mountPath: /mnt/efs  # Mount the EFS volume
       containers:
       - name: sample-api
         image: dockerrexxzz/dj:v1  # Replace with your Docker image name and tag
         imagePullPolicy: Always
         envFrom:
           - secretRef:
-              name: secret-env
+              name: secret-env  # Environment variables from Secret
         resources:
           limits:
             memory: "256Mi"  # Adjust the memory limit as per your requirements
@@ -35,28 +40,28 @@ spec:
             cpu: "100m"
         ports:
           - name: sample-port
-            containerPort: 7000
+            containerPort: 7000  # Application port
         readinessProbe:
           httpGet:
-            path: /home  # Adjust the path based on your application's health check endpoint
+            path: /home  # Health check path
             port: 7000
-          initialDelaySeconds: 10
-          periodSeconds: 5
+          initialDelaySeconds: 10  # Delay before the first probe
+          periodSeconds: 5  # Frequency of probe
         livenessProbe:
           httpGet:
-            path: /home  # Adjust the path based on your application's health check endpoint
+            path: /home  # Health check path
             port: 7000
-          initialDelaySeconds: 15
+          initialDelaySeconds: 15  # Delay before the first probe
         volumeMounts:
           - name: api-storage
-            mountPath: /mnt/efs
+            mountPath: /mnt/efs  # Mount the EFS volume inside the container
           - name: secret-json
-            mountPath: /app/config/secrets.json
-            subPath: secrets.json
+            mountPath: /app/config/secrets.json  # Mount the ConfigMap file
+            subPath: secrets.json  # Use subPath to map a specific file
       volumes:
         - name: api-storage
           persistentVolumeClaim:
-            claimName: api-pvc
+            claimName: api-pvc  # Use the PVC for storage
         - name: secret-json
           configMap:
-            name: secrets-json
+            name: secrets-json  # Use the ConfigMap for secrets.json

@@ -1,18 +1,19 @@
+# Ingress resource to route traffic to the sample-service
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: sample-ingress
   annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.entrypoints: web  # Use the "web" entrypoint in Traefik
 spec:
   rules:
     - host: sample-ing.local  # Replace with your domain or use nip.io for testing
       http:
         paths:
           - path: /
-            pathType: Prefix
+            pathType: Prefix  # Path type can be Exact or Prefix
             backend:
               service:
-                name: sample-service
+                name: sample-service  # Service name to route traffic to
                 port:
-                  number: 8000
+                  number: 8000  # Service port

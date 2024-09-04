@@ -1,3 +1,4 @@
+# HorizontalPodAutoscaler to scale the Deployment based on CPU and memory utilization
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -6,19 +7,19 @@ spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: sample-api
-  minReplicas: 1
-  maxReplicas: 3
+    name: sample-api  # Target deployment to be scaled
+  minReplicas: 1  # Minimum number of replicas
+  maxReplicas: 3  # Maximum number of replicas
   metrics:
   - type: Resource
     resource:
       name: cpu
       target:
         type: Utilization
-        averageUtilization: 80
+        averageUtilization: 80  # Target CPU utilization percentage
   - type: Resource
     resource:
       name: memory
       target:
         type: Utilization
-        averageUtilization: 80
+        averageUtilization: 80  # Target memory utilization percentage

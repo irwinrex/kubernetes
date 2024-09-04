@@ -1,3 +1,4 @@
+# ConfigMap containing a JSON file as data
 apiVersion: v1
 kind: ConfigMap
 metadata:

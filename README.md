@@ -1,39 +1,99 @@
-note : Testing the files to fully operatable 
+# Kubernetes Deployment Guide
 
-Working on : Daemon set ( node exporter, etc.. )
-             statefull set ( Database )
+### Note: Testing the Files for Full Operation
 
-## Kubernetes Commands
+This guide will help you set up Kubernetes components, including DaemonSets (like node exporter) and StatefulSets (like databases), using either Minikube or K3s.
 
-k8 : minikube or k3
+## Prerequisites
 
-Components:
+Ensure you have the following components installed:
 
-~ Docker --> https://docs.docker.com/desktop/install/linux-install/
+- **Docker**  
+  [Install Docker for Linux](https://docs.docker.com/desktop/install/linux-install/)
 
-~ Linux --> Windows User ( Please use wsl2 )
+- **Linux Environment**  
+  For Windows users, please use **WSL2**.
+
+## Installation Instructions
+
+Clone the repository and execute the necessary scripts:
 
 ```
 git clone https://github.com/irwinrex/kubernetes.git
 chmod +x shellscripts/*.sh
-sh shellscripts/install_k3.sh or sh shellscripts/install_minikube.sh
-sh shellscripts/install_helm.sh
-sh shellscripts/install_metrics.sh
-sudo ufw allow 6443/tcp #apiserver
-sudo ufw allow from 10.42.0.0/16 to any #pods
-sudo ufw allow from 10.43.0.0/16 to any #services
-eval $(minikube docker-env)       # if you install k3 please skip this
+sh shellscripts/install_k3.sh             # For K3s
+# or
+sh shellscripts/install_minikube.sh       # For Minikube
+sh shellscripts/install_helm.sh           # Install Helm
+sh shellscripts/install_metrics.sh        # Install Metrics Server
+```
+
+## Firewall Configuration
+### Allow necessary ports through the firewall:
+
+
+```
+sudo ufw allow 6443/tcp               # Allow API Server port
+sudo ufw allow from 10.42.0.0/16 to any # Allow traffic from Pods network
+sudo ufw allow from 10.43.0.0/16 to any # Allow traffic from Services network
+```
+
+
+## Docker Configuration
+If using Minikube, configure Docker to use Minikube's Docker daemon:
+
+
+```
+eval $(minikube docker-env)
+```
+If using K3s, skip the above command.
+
+Pull and Deploy Docker Image
+
+```
 docker pull dockerrexxzz/dj:latest
 kubectl apply -f all.yml
-kubectl port-forward svc/sample-service 8000:8000
-<!-- minikube addon enable ingress     # if you install k3 please skip this
-sudo nano /etc/hosts --> 127.0.0.1 sample-ing.local   (domain mapping in local)
-curl -L http://sample-ing.local  or Open in Browser -->
 ```
-## To uninstall
+
+## Accessing the Application
+### Forward the service port to access the application:
+
+
+```
+kubectl port-forward svc/sample-service 8000:8000
+```
+
+Ingress Setup (Minikube only)
+Enable the Ingress addon in Minikube and configure the host:
+
+
+```
+minikube addon enable ingress           # Skip this for K3s
+sudo nano /etc/hosts                    # Add domain mapping
+```
+
+# Add the following line:
+
+127.0.0.1 sample-ing.local
+Access the application via:
+
+
+```
+curl -L http://sample-ing.local
+```
+
+# or open in a browser:
+
+http://sample-ing.local
+
+## Uninstallation Instructions
+
+To uninstall any component, navigate to the shellscripts directory and execute the corresponding script:
+
 
 ```
 cd shellscripts
-
-execute the script you want  eg: sh uninstall_blah.sh
+sh uninstall_<component>.sh
 ```
+
+Replace <component> with the desired script name, for example, uninstall_k3.sh.

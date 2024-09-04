@@ -1,3 +1,4 @@
+# PersistentVolumeClaim to request storage from the PersistentVolume
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -8,5 +9,5 @@ spec:
     requests:
       storage: 1Gi  # Define the desired storage capacity
   accessModes:
-    - ReadWriteOnce
-  storageClassName: manual
+    - ReadWriteOnce  # Define how the PVC can be accessed
+  storageClassName: manual  # Match the PV's storage class
