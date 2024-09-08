@@ -22,8 +22,6 @@ Clone the repository and execute the necessary scripts:
 git clone https://github.com/irwinrex/kubernetes.git
 chmod +x shellscripts/*.sh
 sh shellscripts/install_k3.sh             # For K3s
-# or
-sh shellscripts/install_minikube.sh       # For Minikube
 sh shellscripts/install_helm.sh           # Install Helm
 sh shellscripts/install_metrics.sh        # Install Metrics Server
 ```
@@ -44,6 +42,7 @@ If using Minikube, configure Docker to use Minikube's Docker daemon:
 
 
 ```
+sh shellscripts/install_minikube.sh       # For Minikube
 eval $(minikube docker-env)
 ```
 If using K3s, skip the above command.
