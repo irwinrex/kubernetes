@@ -14,16 +14,18 @@ Ensure you have the following components installed:
 - **Linux Environment**  
   For Windows users, please use **WSL2**.
 
-## Installation Instructions
+## K3 Installation Instructions
 
 Clone the repository and execute the necessary scripts:
 
 ```
 git clone https://github.com/irwinrex/kubernetes.git
 chmod +x shellscripts/*.sh
-sh shellscripts/install_k3.sh             # For K3s
+sh shellscripts/install_kubectl.sh        # Kubectl installation
+sh shellscripts/install_k3.sh             # K3s Installation
 sh shellscripts/install_helm.sh           # Install Helm
 sh shellscripts/install_metrics.sh        # Install Metrics Server
+kubectl get pod -n kube-system
 ```
 
 ## Firewall Configuration
@@ -37,21 +39,28 @@ sudo ufw allow from 10.43.0.0/16 to any # Allow traffic from Services network
 ```
 
 
-## Docker Configuration
+## Minikube Installation Instructions
 If using Minikube, configure Docker to use Minikube's Docker daemon:
 
 
 ```
-sh shellscripts/install_minikube.sh       # For Minikube
+sh shellscripts/install_kubectl.sh        # Install kubectl
+sh shellscripts/install_minikube.sh       # Install minikube
+sh shellscripts/install_helm.sh           # Install Helm
+sh shellscripts/install_metrics.sh        # Install Metrics Server
+kubectl get pod -n kube-system
 eval $(minikube docker-env)
 ```
-If using K3s, skip the above command.
+
+
+# Excute to Run the Application
 
 Pull and Deploy Docker Image
 
 ```
-docker pull dockerrexxzz/dj:latest
+docker pull dockerrexxzz/dj:v1
 kubectl apply -f all.yml
+kubectl get pod
 ```
 
 ## Accessing the Application
