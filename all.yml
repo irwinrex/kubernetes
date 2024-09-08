@@ -56,7 +56,7 @@ metadata:
     app: api-pv
 spec:
   accessModes:
-    - ReadWriteOnce  # Defines how the volume can be accessed
+    - ReadWriteMany  # Defines how the volume can be accessed
   capacity:
     storage: 1Gi  # Storage capacity of the PV
   hostPath:
@@ -76,7 +76,7 @@ spec:
     requests:
       storage: 1Gi  # Define the desired storage capacity
   accessModes:
-    - ReadWriteOnce  # Define how the PVC can be accessed
+    - ReadWriteMany  # Define how the PVC can be accessed
   storageClassName: manual  # Match the PV's storage class
 
 ---
@@ -100,12 +100,15 @@ spec:
         runAsGroup: 1000  # Group ID to run the application
         fsGroup: 2000  # Group ID for file system permissions
       initContainers:
-      - name: setup-permissions
-        image: busybox
-        command: ["sh", "-c", "chmod 777 -R /mnt/efs"]  # Set permissions for the volume
-        volumeMounts:
-          - name: api-storage
-            mountPath: /mnt/efs  # Mount the EFS volume
+        - name: setup-permissions
+          image: busybox
+          command: ["sh", "-c", "chmod 777 -R /mnt/efs"]
+          volumeMounts:
+            - name: api-storage
+              mountPath: /mnt/efs  # Ensure this path is correct
+          securityContext:
+            runAsUser: 0
+            privileged: true
       containers:
       - name: sample-api
         image: dockerrexxzz/dj:v1  # Replace with your Docker image name and tag

@@ -44,6 +44,7 @@ If using Minikube, configure Docker to use Minikube's Docker daemon:
 
 
 ```
+chmod +x shellscripts/*.sh
 sh shellscripts/install_kubectl.sh        # Install kubectl
 sh shellscripts/install_minikube.sh       # Install minikube
 sh shellscripts/install_helm.sh           # Install Helm
@@ -59,6 +60,9 @@ Pull and Deploy Docker Image
 
 ```
 docker pull dockerrexxzz/dj:v1
+sudo mkdir -p /mnt/efs
+sudo chown -R <username>:<username> /mnt/efs
+sudo chmod -R 777 /mnt/efs
 kubectl apply -f all.yml
 kubectl get pod
 ```
