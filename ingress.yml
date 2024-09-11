@@ -16,4 +16,4 @@ spec:
               service:
                 name: sample-service  # Service name to route traffic to
                 port:
-                  number: 8000  # Service port
+                  name: sample-service-port  # Service port

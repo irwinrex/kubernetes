@@ -7,8 +7,8 @@ spec:
   selector:
     app: sample-api  # Match pods with this label
   ports:
-    - name: sample-port
+    - name: sample-service-port
       protocol: TCP
       port: 8000  # Service port
-      targetPort: sample-port  # Port on the pod
+      targetPort: sample-pod-port  # Port on the pod
   type: ClusterIP  # Service type

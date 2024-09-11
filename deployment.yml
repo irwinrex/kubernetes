@@ -29,7 +29,7 @@ spec:
             privileged: true
       containers:
       - name: sample-api
-        image: dockerrexxzz/dj:v1  # Replace with your Docker image name and tag
+        image: dockerrexxzz/sampleapi:latest  # Replace with your Docker image name and tag
         imagePullPolicy: Always
         envFrom:
           - secretRef:
@@ -42,17 +42,17 @@ spec:
             memory: "125Mi"
             cpu: "100m"
         ports:
-          - name: sample-port
+          - name: sample-pod-port
             containerPort: 7000  # Application port
         readinessProbe:
           httpGet:
-            path: /home  # Health check path
+            path: /healthcheck  # Health check path
             port: 7000
           initialDelaySeconds: 10  # Delay before the first probe
           periodSeconds: 5  # Frequency of probe
         livenessProbe:
           httpGet:
-            path: /home  # Health check path
+            path: /healthcheck  # Health check path
             port: 7000
           initialDelaySeconds: 15  # Delay before the first probe
         volumeMounts:

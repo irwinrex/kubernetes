@@ -111,7 +111,7 @@ spec:
             privileged: true
       containers:
       - name: sample-api
-        image: dockerrexxzz/dj:v1  # Replace with your Docker image name and tag
+        image: dockerrexxzz/sampleapi:latest  # Replace with your Docker image name and tag
         imagePullPolicy: Always
         envFrom:
           - secretRef:
@@ -124,17 +124,17 @@ spec:
             memory: "125Mi"
             cpu: "100m"
         ports:
-          - name: sample-port
+          - name: sample-pod-port
             containerPort: 7000  # Application port
         readinessProbe:
           httpGet:
-            path: /home  # Health check path
+            path: /healthcheck # Health check path
             port: 7000
           initialDelaySeconds: 10  # Delay before the first probe
           periodSeconds: 5  # Frequency of probe
         livenessProbe:
           httpGet:
-            path: /home  # Health check path
+            path: /healthcheck  # Health check path
             port: 7000
           initialDelaySeconds: 15  # Delay before the first probe
         volumeMounts:
@@ -161,29 +161,29 @@ spec:
   selector:
     app: sample-api  # Match pods with this label
   ports:
-    - name: sample-port
+    - name: sample-service-port
       protocol: TCP
       port: 8000  # Service port
-      targetPort: sample-port  # Port on the pod
+      targetPort: sample-pod-port  # Port on the pod
   type: ClusterIP  # Service type
 
 ---
 # Ingress resource to route traffic to the sample-service
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: sample-ingress
-  annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: web  # Use the "web" entrypoint in Traefik
-spec:
-  rules:
-    - host: sample-ing.local  # Replace with your domain or use nip.io for testing
-      http:
-        paths:
-          - path: /
-            pathType: Prefix  # Path type can be Exact or Prefix
-            backend:
-              service:
-                name: sample-service  # Service name to route traffic to
-                port:
-                  number: 8000  # Service port
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: sample-ingress
+#   annotations:
+#     traefik.ingress.kubernetes.io/router.entrypoints: web  # Use the "web" entrypoint in Traefik
+# spec:
+#   rules:
+#     - host: sample-ing.local  # Replace with your domain or use nip.io for testing
+#       http:
+#         paths:
+#           - path: /
+#             pathType: Prefix  # Path type can be Exact or Prefix
+#             backend:
+#               service:
+#                 name: sample-service  # Service name to route traffic to
+#                 port:
+#                   name: sample-service-port  # Service port

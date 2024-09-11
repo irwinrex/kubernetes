@@ -1,0 +1,17 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    container_name: sampleapi
+    restart: unless-stopped
+    environment:
+      - bye=bye
+    volumes:
+        # - ../django/config/secrets.json:/app/config/secrets.json
+        # - ../django/django-local-efs:/var/www/django-local-efs
+        - ./:/app
+    ports:
+      - 7000:7000
