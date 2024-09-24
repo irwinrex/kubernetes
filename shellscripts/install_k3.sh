@@ -1,5 +1,7 @@
 #!/bin/bash
 
+username=${whoami}
+
 # Download and install K3s
 curl -sfL https://get.k3s.io | sh -s - --disable traefik,metrics-server
 
@@ -16,12 +18,12 @@ if [ -f ~/.kube/config ]; then
 fi
 
 # Create a symbolic link to the K3s kubeconfig file
-ln -s /etc/rancher/k3s/k3s.yaml ~/.kube/config
+sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
 
 # Change Permission
-sudo chmod 600 ~/.kube/config
+chmod 700 ~/.kube/config
 sudo chmod 700 /etc/rancher/k3s/k3s.yaml
-sudo chown ${whoami}:${whoami} ~/.kube/config
+sudo chown $username:$username ~/.kube/config
 
 # Verify K3s installation
 sudo k3s kubectl get nodes
