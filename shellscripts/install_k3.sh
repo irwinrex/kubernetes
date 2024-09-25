@@ -23,7 +23,7 @@ sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
 # Change Permission
 chmod 700 ~/.kube/config
 sudo chmod 700 /etc/rancher/k3s/k3s.yaml
-# sudo chown $username:$username ~/.kube/config
+# sudo chown ${whoami}:${whoami} ~/.kube/config
 
 # Verify K3s installation
 sudo k3s kubectl get nodes
