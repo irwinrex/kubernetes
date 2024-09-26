@@ -47,7 +47,7 @@ spec:
         averageUtilization: 80  # Target memory utilization percentage
 
 ---
-# PersistentVolume definition for EFS storage
+# PersistentVolume definition for local storage
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -60,7 +60,7 @@ spec:
   capacity:
     storage: 1Gi  # Storage capacity of the PV
   hostPath:
-    path: /mnt/efs  # Path on the host where the PV is mounted
+    path: /mnt/efs  # Path on the host where the path for the local PV
   persistentVolumeReclaimPolicy: Retain  # Retain the PV after it's released
   storageClassName: manual  # Custom storage class
 
