@@ -25,6 +25,18 @@ kubectl get nodes
 # Provide feedback on completion
 echo "K3s installation complete! Kubernetes is running and kube config is set up."
 
+# Install kubectl
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl.sha256"
+echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check
+
+sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+chmod 700 kubectl
+mkdir -p ~/.local/bin
+mv ./kubectl ~/.local/bin/kubectl
+rm -rvf kubectl
+rm -rvf kubectl.sha256
+kubectl version --client --output=yaml
 
 # Add the Metrics Server Helm repository and update it
 helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
@@ -57,8 +69,8 @@ sha256sum --check cilium-linux-${CLI_ARCH}.tar.gz.sha256sum
 sudo tar xzvfC cilium-linux-${CLI_ARCH}.tar.gz /usr/local/bin
 
 # Cleanup downloaded files
-rm cilium-linux-*.tar.gz.sha256sum
-rm cilium-linux-*.tar.gz
+rm -rvf cilium-linux-*.tar.gz.sha256sum
+rm -rvf cilium-linux-*.tar.gz
 
 # Install Cilium using the k3s default podCIDR
 cilium install --set=ipam.operator.clusterPoolIPv4PodCIDRList="10.42.0.0/16"
