@@ -18,15 +18,15 @@ spec:
         runAsGroup: 1000  # Group ID to run the application
         fsGroup: 2000  # Group ID for file system permissions
       initContainers:
-        - name: setup-permissions
-          image: busybox
-          command: ["sh", "-c", "chmod 777 -R /mnt/efs"]
-          volumeMounts:
-            - name: api-storage
-              mountPath: /mnt/efs  # Ensure this path is correct
-          securityContext:
-            runAsUser: 0
-            privileged: true
+      - name: setup-permissions
+        image: busybox
+        command: ["sh", "-c", "chown 1000:1000 -R /mnt/efs && chmod 755 -R /mnt/efs"]
+        volumeMounts:
+          - name: api-storage
+            mountPath: /mnt/efs
+        securityContext:
+          runAsUser: 0
+          privileged: true
       containers:
       - name: sample-api
         image: dockerrexxzz/sampleapi:latest  # Replace with your Docker image name and tag
