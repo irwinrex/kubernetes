@@ -109,3 +109,18 @@ sh uninstall_<component>.sh
 ```
 
 Replace <component> with the desired script name, for example, uninstall_k3.sh.
+
+
+Note :
+
+## Added Cilium
+
+~ Cilium efficiently manages Kubernetes networking to reduce latency, even with the default setup:
+
+~ eBPF-Powered Networking: High-performance packet processing in the Linux kernel reduces overhead and network hops.
+
+~ Efficient Load Balancing: eBPF-based L4 load balancing ensures smooth traffic distribution across pods, avoiding traditional bottlenecks.
+
+~ Optimized Network Policies: Cilium enforces network policies within the kernel for minimal performance impact.
+
+~ Direct Pod Communication: Cilium allows direct pod-to-pod traffic, reducing network hops and improving latency.
