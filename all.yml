@@ -4,19 +4,20 @@ kind: Namespace
 metadata:
   name: irwinrex
 ---
-apiVersion: "cilium.io/v2"
-kind: CiliumNetworkPolicy
-metadata:
-  name: allow-ingress-same-namespace
-  namespace: irwinrex
-spec:
-  endpointSelector:
-    matchLabels:
-      app: sample-pod # Match pods with this label
-  ingress:
-  - fromEndpoints:
-    - matchLabels:
-        app: sample-pod # Only allow traffic from pods with the same label
+# apiVersion: "cilium.io/v2"
+# kind: CiliumNetworkPolicy
+# metadata:
+#   name: allow-ingress-same-namespace
+#   namespace: irwinrex
+# spec:
+#   endpointSelector:
+#     matchLabels:
+#       app: sample-pod # Match pods with this label
+#   ingress:
+#   - fromEndpoints:
+#     - matchLabels:
+#         app: sample-pod # Only allow traffic from pods with the same label
+
 ---
 # Secret definition for environment variables
 apiVersion: v1
@@ -186,7 +187,7 @@ spec:
     app: sample-pod  # Match pods with this label
     pod : sample-api # Label selector for the pod
   ports:
-    - name: sample-service-port
+    - name: sample-svc-port
       protocol: TCP
       port: 8000  # Service <your-namespace>port
       targetPort: sample-pod-port  # Port on the pod
@@ -194,21 +195,23 @@ spec:
 
 ---
 # Ingress resource to route traffic to the sample-service
-# apiVersion: networking.k8s.io/v1
-# kind: Ingress
-# metadata:
-#   name: sample-ingress
-#   annotations:
-#     traefik.ingress.kubernetes.io/router.entrypoints: web  # Use the "web" entrypoint in Traefik
-# spec:
-#   rules:
-#     - host: sample-ing.local  # Replace with your domain or use nip.io for testing
-#       http:
-#         paths:
-#           - path: /
-#             pathType: Prefix  # Path type can be Exact or Prefix
-#             backend:
-#               service:
-#                 name: sample-service  # Service name to route traffic to
-#                 port:
-#                   name: sample-service-port  # Service port
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sample-ingress
+  namespace: irwinrex
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web  # Use the "web" entrypoint in Traefik
+spec:
+  rules:
+    - host: first.itsnota.site  # Replace with your domain or use nip.io for testing
+      http:
+        paths:
+          - path: /
+            pathType: Prefix  # Path type can be Exact or Prefix
+            backend:
+              service:
+                name: sample-service  # Service name to route traffic to
+                port:
+                  name: sample-svc-port  # Service port
+

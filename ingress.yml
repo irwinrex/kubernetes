@@ -17,4 +17,4 @@ spec:
               service:
                 name: sample-service  # Service name to route traffic to
                 port:
-                  name: sample-service-port  # Service port
+                  name: sample-svc-port  # Service port

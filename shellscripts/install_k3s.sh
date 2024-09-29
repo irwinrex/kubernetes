@@ -75,6 +75,7 @@ rm -rvf cilium-linux-*.tar.gz
 # Install Cilium using the k3s default podCIDR
 cilium install \
     --set ipam.operator.clusterPoolIPv4PodCIDRList="10.42.0.0/16" \
+    --set global.tunnel="vxlan" \
     --set trafficPolicy.enable=true \
     --set trafficPolicy.defaultIngressPolicy="allow" \
     --set trafficPolicy.defaultEgressPolicy="allow"
