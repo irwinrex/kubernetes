@@ -71,9 +71,9 @@ spec:
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: api-pv
+  name: sample-pv
   labels:
-    app: api-pv
+    app: sample-pv
 spec:
   capacity:
     storage: 1Gi  # Storage capacity of the PV
@@ -87,12 +87,12 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: api-pvc
+  name: sample-pvc
   namespace: irwinrex  # Make sure this is the same namespace as your deployment
 spec:
   selector:
     matchLabels:
-      app: api-pv  # Label selector for the PV
+      app: sample-pv  # Label selector for the PV
   accessModes:
     - ReadWriteMany  # Matches the access mode of the PV
   resources:
@@ -111,7 +111,7 @@ spec:
   replicas: 1  # Number of desired replicas
   selector:
     matchLabels:
-      app: sample-pod  # Labels selector for the pods, note the plural
+      app: sample-pod  # Label selector for the pods
   template:
     metadata:
       labels:
@@ -169,7 +169,7 @@ spec:
       volumes:
         - name: api-storage
           persistentVolumeClaim:
-            claimName: api-pvc  # Use the PVC for storage
+            claimName: sample-pvc  # Use the PVC for storage
         - name: secret-json
           configMap:
             name: secrets-json  # Use the ConfigMap for secrets.json

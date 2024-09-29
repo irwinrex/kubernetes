@@ -3,12 +3,14 @@ apiVersion: v1
 kind: Service
 metadata:
   name: sample-service
+  namespace: irwinrex
 spec:
   selector:
-    app: sample-api  # Match pods with this label
+    app: sample-pod  # Match pods with this label
+    pod : sample-api # Label selector for the pod
   ports:
     - name: sample-service-port
       protocol: TCP
-      port: 8000  # Service port
+      port: 8000  # Service <your-namespace>port
       targetPort: sample-pod-port  # Port on the pod
   type: ClusterIP  # Service type
