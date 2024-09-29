@@ -105,6 +105,7 @@ Replace <component> with the desired script name, for example, uninstall_k3.sh.
 
 
 Note :
+~ Added Networks for namespace ( pod can communicate inside ingress not outside ingress ) for Environment Seperation or Tool Seperetions
 
 ## Added Cilium
 

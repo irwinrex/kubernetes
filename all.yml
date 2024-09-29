@@ -1,8 +1,29 @@
+# Create a namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: irwinrex
+---
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-ingress-same-namespace
+  namespace: irwinrex
+spec:
+  endpointSelector:
+    matchLabels:
+      app: sample-pod # Match pods with this label
+  ingress:
+  - fromEndpoints:
+    - matchLabels:
+        app: sample-pod # Only allow traffic from pods with the same label
+---
 # Secret definition for environment variables
 apiVersion: v1
 kind: Secret
 metadata:
   name: secret-env
+  namespace: irwinrex
 type: Opaque
 data:
   bye: "Ynll"  # Ensure this value is base64 encoded
@@ -13,18 +34,19 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: secrets-json
+  namespace: irwinrex
 data:
   secrets.json: |
     {
       "hai": "hai"
     }
-
 ---
 # HorizontalPodAutoscaler to scale the Deployment based on CPU and memory utilization
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: my-hpa
+  namespace: irwinrex
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
@@ -45,9 +67,7 @@ spec:
       target:
         type: Utilization
         averageUtilization: 80  # Target memory utilization percentage
-
 ---
-# PersistentVolume definition for local storage
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -55,29 +75,30 @@ metadata:
   labels:
     app: api-pv
 spec:
-  accessModes:
-    - ReadWriteMany  # Defines how the volume can be accessed
   capacity:
     storage: 1Gi  # Storage capacity of the PV
+  accessModes:
+    - ReadWriteMany  # Access mode allowing multiple pods to read/write
   hostPath:
-    path: /mnt/efs  # Path on the host where the path for the local PV
-  persistentVolumeReclaimPolicy: Retain  # Retain the PV after it's released
-  storageClassName: manual  # Custom storage class
-
+    path: /mnt/efs  # The host path for local storage
+  persistentVolumeReclaimPolicy: Retain  # Keeps the PV after its claim is deleted
+  storageClassName: manual  # Matches the PVC storage class
 ---
-# PersistentVolumeClaim to request storage from the PersistentVolume
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: api-pvc
-  namespace: default
+  namespace: irwinrex  # Make sure this is the same namespace as your deployment
 spec:
+  selector:
+    matchLabels:
+      app: api-pv  # Label selector for the PV
+  accessModes:
+    - ReadWriteMany  # Matches the access mode of the PV
   resources:
     requests:
-      storage: 1Gi  # Define the desired storage capacity
-  accessModes:
-    - ReadWriteMany  # Define how the PVC can be accessed
-  storageClassName: manual  # Match the PV's storage class
+      storage: 1Gi  # The requested storage, should match or be less than the PV capacity
+  storageClassName: manual  # Must match the PV's storage class
 
 ---
 # Deployment definition for the sample-api application
@@ -85,15 +106,17 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: sample-api
+  namespace: irwinrex
 spec:
   replicas: 1  # Number of desired replicas
   selector:
     matchLabels:
-      app: sample-api  # Label selector for the pods
+      app: sample-pod  # Labels selector for the pods, note the plural
   template:
     metadata:
       labels:
-        app: sample-api  # Labels for the pods
+        app: sample-pod  # Labels for the pods
+        pod: sample-api  # Label for the pod
     spec:
       securityContext:
         runAsUser: 1000  # User ID to run the application
@@ -157,13 +180,15 @@ apiVersion: v1
 kind: Service
 metadata:
   name: sample-service
+  namespace: irwinrex
 spec:
   selector:
-    app: sample-api  # Match pods with this label
+    app: sample-pod  # Match pods with this label
+    pod : sample-api # Label selector for the pod
   ports:
     - name: sample-service-port
       protocol: TCP
-      port: 8000  # Service port
+      port: 8000  # Service <your-namespace>port
       targetPort: sample-pod-port  # Port on the pod
   type: ClusterIP  # Service type
 

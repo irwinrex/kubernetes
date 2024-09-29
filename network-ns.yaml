@@ -1,0 +1,13 @@
+apiVersion: "cilium.io/v2"
+kind: CiliumNetworkPolicy
+metadata:
+  name: allow-ingress-same-namespace
+  namespace: irwinrex
+spec:
+  endpointSelector:
+    matchLabels:
+      app: sample-pod # Match pods with this label
+  ingress:
+  - fromEndpoints:
+    - matchLabels:
+        app: sample-pod # Only allow traffic from pods with the same label

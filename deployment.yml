@@ -3,15 +3,16 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: sample-api
+  namespace: irwinrex
 spec:
   replicas: 1  # Number of desired replicas
   selector:
     matchLabels:
-      app: sample-api  # Label selector for the pods
+      app: sample  # Label selector for the pods
   template:
     metadata:
       labels:
-        app: sample-api  # Labels for the pods
+        app: sample  # Labels for the pods
     spec:
       securityContext:
         runAsUser: 1000  # User ID to run the application
