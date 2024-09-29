@@ -8,7 +8,7 @@ metadata:
     traefik.ingress.kubernetes.io/router.entrypoints: web  # Use the "web" entrypoint in Traefik
 spec:
   rules:
-    - host: sample-ing.local  # Replace with your domain or use nip.io for testing
+    - host: first.itsnota.site  # Replace with your domain or use nip.io for testing
       http:
         paths:
           - path: /
