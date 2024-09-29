@@ -8,11 +8,12 @@ spec:
   replicas: 1  # Number of desired replicas
   selector:
     matchLabels:
-      app: sample  # Label selector for the pods
+      app: sample-pod  # Label selector for the pods
   template:
     metadata:
       labels:
-        app: sample  # Labels for the pods
+        app: sample-pod  # Labels for the pods
+        pod: sample-api  # Label for the pod
     spec:
       securityContext:
         runAsUser: 1000  # User ID to run the application
@@ -47,7 +48,7 @@ spec:
             containerPort: 7000  # Application port
         readinessProbe:
           httpGet:
-            path: /healthcheck  # Health check path
+            path: /healthcheck # Health check path
             port: 7000
           initialDelaySeconds: 10  # Delay before the first probe
           periodSeconds: 5  # Frequency of probe
@@ -65,7 +66,7 @@ spec:
       volumes:
         - name: api-storage
           persistentVolumeClaim:
-            claimName: api-pvc  # Use the PVC for storage
+            claimName: sample-pvc  # Use the PVC for storage
         - name: secret-json
           configMap:
             name: secrets-json  # Use the ConfigMap for secrets.json
