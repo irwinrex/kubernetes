@@ -17,8 +17,10 @@ metadata:
 #   - fromEndpoints:
 #     - matchLabels:
 #         app: sample-pod # Only allow traffic from pods with the same label
-
----
+#   - fromEntities:
+#     - host    # Allow traffic from the Kubelet (host)
+#     - health  # Allow traffic for health checks (liveness/readiness probes)
+# ---
 # Secret definition for environment variables
 apiVersion: v1
 kind: Secret
