@@ -38,6 +38,27 @@ rm -rvf kubectl
 rm -rvf kubectl.sha256
 kubectl version --client --output=yaml
 
+# Download Helm installation script
+echo "Downloading Helm installation script..."
+curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+
+# Make the installation script executable
+chmod +x get_helm.sh
+
+# Run the Helm installation script
+echo "Installing Helm..."
+./get_helm.sh
+
+# Verify Helm installation
+if helm version >/dev/null 2>&1; then
+    echo "Helm installed successfully."
+else
+    echo "Helm installation failed."
+fi
+
+# Clean up the installation script
+rm -f get_helm.sh
+
 # Add the Metrics Server Helm repository and update it
 helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
 helm repo update
