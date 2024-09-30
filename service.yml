@@ -9,7 +9,7 @@ spec:
     app: sample-pod  # Match pods with this label
     pod : sample-api # Label selector for the pod
   ports:
-    - name: sample-service-port
+    - name: sample-svc-port
       protocol: TCP
       port: 8000  # Service <your-namespace>port
       targetPort: sample-pod-port  # Port on the pod
