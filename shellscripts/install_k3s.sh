@@ -59,6 +59,14 @@ fi
 # Clean up the installation script
 rm -f get_helm.sh
 
+# Installing Cilium by helm
+helm repo add cilium https://helm.cilium.io/
+helm repo update
+
+helm install cilium cilium/cilium --version 1.16.2 \
+   --namespace kube-system \
+   --set operator.replicas=1
+
 # Add the Metrics Server Helm repository and update it
 helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
 helm repo update
@@ -71,13 +79,4 @@ echo 'Wait for 30 Seconds'
 
 sleep 30
 
-# Installing Cilium by helm
-
-helm repo add cilium https://helm.cilium.io/
-helm repo update
-
-helm install cilium cilium/cilium --version 1.16.2 \
-   --namespace kube-system \
-   --set operator.replicas=1
-
-
+echo "Installation Completed"
