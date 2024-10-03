@@ -17,9 +17,9 @@ install_k3s() {
 
     # Copy the K3s kubeconfig file to the user's kube config file
     sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
-    # sed -i "s/127.0.0.1/$(hostname -i | awk '{print $1}')/g" ~/.kube/config
+    # Update the Kubeconfig file to use the host's IP
     sudo chmod 600 ~/.kube/config
-    sudo chown $(whoami):$(whoami) ~/.kube/config
+    sudo chown $(whoami):$(whoami) ~/.kube/config /etc/rancher/k3s/k3s.yaml
 
     # Export KUBECONFIG
     export KUBECONFIG=~/.kube/config
@@ -70,26 +70,20 @@ install_helm() {
 # Function to install Cilium
 install_cilium() {
     echo "Installing Cilium..."
-    CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
-    CLI_ARCH=amd64
-    if [ "$(uname -m)" = "aarch64" ]; then CLI_ARCH=arm64; fi
-    curl -L --fail --remote-name-all https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
-    sha256sum --check cilium-linux-${CLI_ARCH}.tar.gz.sha256sum
-    sudo tar xzvfC cilium-linux-${CLI_ARCH}.tar.gz /usr/local/bin
-    rm cilium-linux-${CLI_ARCH}.tar.gz{,.sha256sum}
-
-    # Cilium installation
-    cilium install --version 1.16.2 --set=ipam.operator.clusterPoolIPv4PodCIDRList="10.42.0.0/16" --set kubeProxyReplacement=true
+    export KUBECONFIG=~/.kube/config
+    helm repo add cilium https://helm.cilium.io/
+    helm repo update
+    helm install cilium cilium/cilium --version 1.16.2 \
+        --namespace kube-system \
+        --set operator.replicas=1 \
+        --set kubeProxyReplacement=true \
+        --set hostService.enabled=true
+    
+    echo "Waiting for Cilium to initialize..."
+    sleep 30
 
     # Verify Cilium installation
-    cilium version
-    cilium status --wait
-    # cilium connectivity test
-
-    # Install Cilium Hubble
-    # echo "Installing Cilium Hubble..."
-    # cilium hubble enable --ui
-    # cilium hubble ui
+    kubectl -n kube-system get pods -l k8s-app=cilium
 }
 
 # Function to install Metrics Server
@@ -102,8 +96,11 @@ install_metrics() {
     helm install metrics-server metrics-server/metrics-server --namespace kube-system --set args[0]=--kubelet-insecure-tls
 
     # Wait for 30 seconds to allow Metrics Server to initialize
-    echo 'Waiting for 30 seconds...'
+    echo 'Waiting for Metrics Server to initialize...'
     sleep 30
+
+    # Verify Metrics Server installation
+    kubectl -n kube-system get pods -l k8s-app=metrics-server
 }
 
 # Main script execution
