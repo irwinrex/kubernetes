@@ -1,13 +1,18 @@
 apiVersion: "cilium.io/v2"
 kind: CiliumNetworkPolicy
 metadata:
-  name: allow-ingress-same-namespace
-  namespace: irwinrex
+  name: allow-health-probes
+  namespace: irwinrex  # Ensure this matches your deployment namespace
 spec:
   endpointSelector:
     matchLabels:
-      app: sample-pod # Match pods with this label
+      app: sample-pod  # Match pods with this label
   ingress:
-  - fromEndpoints:
-    - matchLabels:
-        app: sample-pod # Only allow traffic from pods with the same label
+  - fromEntities:
+    - all  # Allow traffic from all entities (or specify as needed)
+    toPorts:
+    - ports:
+      - port: "7000"  # Replace with your liveness probe port as a string
+        protocol: TCP
+      - port: "7000"  # Replace with your readiness probe port as a string
+        protocol: TCP

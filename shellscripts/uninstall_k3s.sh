@@ -1,20 +1,66 @@
 #!/bin/bash
 
-# Stop k3s service if running
-echo "Stopping k3s service..."
-sudo systemctl stop k3s
+# Exit on error and enable pipefail
+set -euo pipefail
 
-# Disable k3s service
-echo "Disabling k3s service..."
-sudo systemctl disable k3s
+# Function to check if a command exists
+check_command_exists() {
+    command -v "$1" &> /dev/null
+}
+
+# Uninstall Cilium if installed
+echo "Uninstalling Cilium..."
+if check_command_exists "kubectl" && kubectl get pods -n kube-system | grep -q "cilium"; then
+    helm uninstall cilium --namespace kube-system || echo "Failed to uninstall Cilium."
+    echo "Cilium has been successfully uninstalled!"
+else
+    echo "Cilium is not installed or kubectl is unavailable."
+fi
+
+# Uninstall Helm
+echo "Uninstalling Helm..."
+if check_command_exists "helm"; then
+    # Remove Helm from common installation paths
+    if [ -f "/usr/local/bin/helm" ]; then
+        sudo rm /usr/local/bin/helm
+        echo "Removed Helm from /usr/local/bin."
+    fi
+
+    # Optionally remove Helm home directory
+    if [ -d "$HOME/.helm" ]; then
+        rm -rf "$HOME/.helm"
+        echo "Removed Helm configuration from $HOME/.helm."
+    fi
+
+    echo "Helm has been uninstalled."
+else
+    echo "Helm is not installed."
+fi
+
+# Remove any remaining Kubernetes configuration (optional)
+echo "Removing Kubernetes configuration..."
+if [ -d "$HOME/.kube" ]; then
+    rm -rf "$HOME/.kube"
+    echo "Removed Kubernetes configuration from $HOME/.kube."
+fi
+
+# Stop and disable k3s service if running (done last)
+echo "Stopping and disabling k3s service..."
+if check_command_exists "systemctl"; then
+    sudo systemctl stop k3s || echo "k3s service not running."
+    sudo systemctl disable k3s || echo "k3s service was not enabled."
+else
+    echo "systemctl not found. Skipping k3s service management."
+fi
 
 # Remove k3s binary
+echo "Removing k3s binary..."
 if [ -f "/usr/local/bin/k3s" ]; then
-    echo "Removing k3s binary from /usr/local/bin..."
     sudo rm /usr/local/bin/k3s
+    echo "Removed k3s binary from /usr/local/bin."
 elif [ -f "/usr/bin/k3s" ]; then
-    echo "Removing k3s binary from /usr/bin..."
     sudo rm /usr/bin/k3s
+    echo "Removed k3s binary from /usr/bin."
 else
     echo "k3s binary not found!"
 fi
@@ -33,85 +79,47 @@ else
 fi
 
 # Reload systemd daemon
-echo "Reloading systemd daemon..."
-sudo systemctl daemon-reload
-
-echo "k3s has been successfully removed!"
-
-# Uninstall Cilium if installed
-echo "Uninstalling Cilium..."
-if kubectl get pods -n kube-system | grep -q "cilium"; then
-    kubectl delete --all namespaces cilium
-    echo "Cilium has been successfully uninstalled!"
-else
-    echo "Cilium is not installed!"
+if check_command_exists "systemctl"; then
+    echo "Reloading systemd daemon..."
+    sudo systemctl daemon-reload
 fi
 
-# Uninstall the Metrics Server release
-echo "Uninstalling Metrics Server..."
-helm uninstall metrics-server --namespace kube-system
-
-# Wait for the Metrics Server resources to be fully removed
-echo "Waiting for Metrics Server resources to be removed..."
-while true; do
-  # Check if any pods with the Metrics Server label still exist
-  pod_count=$(kubectl get pods -n kube-system -l "app.kubernetes.io/name=metrics-server" --no-headers | wc -l)
-  
-  # Check if any services with the Metrics Server label still exist
-  service_count=$(kubectl get services -n kube-system -l "app.kubernetes.io/name=metrics-server" --no-headers | wc -l)
-  
-  # Check if any deployments with the Metrics Server label still exist
-  deployment_count=$(kubectl get deployments -n kube-system -l "app.kubernetes.io/name=metrics-server" --no-headers | wc -l)
-  
-  # Check the CRD still exists
-  crd_exists=$(kubectl get apiservice v1beta1.metrics.k8s.io --ignore-not-found)
-
-  if [ "$pod_count" -eq 0 ] && [ "$service_count" -eq 0 ] && [ "$deployment_count" -eq 0 ] && [ -z "$crd_exists" ]; then
-    echo "Metrics Server has been successfully uninstalled and cleaned up."
-    break
-  else
-    echo "Metrics Server resources still exist. Waiting 10 seconds before retrying..."
-    sleep 10
-  fi
-done
-
-echo "Cleaning up any remaining CRDs if needed..."
-kubectl delete apiservice v1beta1.metrics.k8s.io --ignore-not-found
-
-# (Optionally) Check if kubectl is installed and uninstall
-check_kubectl_installed() {
-    if ! command -v kubectl &> /dev/null; then
-        echo "kubectl is not installed."
-        exit 1
-    fi
-}
-
-# Function to uninstall kubectl
-uninstall_kubectl() {
-    echo "Uninstalling kubectl..."
-    
+# Uninstall kubectl
+echo "Uninstalling kubectl..."
+if check_command_exists "kubectl"; then
     # Attempt to remove kubectl from common installation paths
     if [ -f "/usr/local/bin/kubectl" ]; then
         sudo rm /usr/local/bin/kubectl
         echo "Removed kubectl from /usr/local/bin."
     fi
-    
-    if [ -f "$HOME/.kubectl" ]; then
-        rm "$HOME/.kubectl"
-        echo "Removed kubectl from $HOME/.kubectl."
+    if [ -f "/usr/bin/kubectl" ]; then
+        sudo rm /usr/bin/kubectl
+        echo "Removed kubectl from /usr/bin."
     fi
+else
+    echo "kubectl is not installed."
+fi
 
-    # Optional: Remove kubeconfig and other kubectl-related files
-    if [ -d "$HOME/.kube" ]; then
-        rm -rf "$HOME/.kube"
-        echo "Removed kubectl configuration from $HOME/.kube."
-    fi
+# Uninstall any remaining Kubernetes packages
+echo "Removing remaining Kubernetes packages..."
+if check_command_exists "apt"; then
+    sudo apt-get remove --purge -y kubelet kubeadm kubectl kubernetes-cni kubelet kubectl
+    sudo apt-get autoremove -y
+fi
 
-    echo "kubectl has been uninstalled."
-}
+# Remove remaining Kubernetes directories
+echo "Removing any remaining Kubernetes directories..."
+sudo rm -rf /etc/kubernetes
+sudo rm -rf /var/lib/etcd
+sudo rm -rf /etc/cni
+sudo rm -rf /var/lib/cni
+sudo rm -rf /var/run/kubernetes
+sudo rm -rf /var/lib/kubelet
+sudo rm -rf /var/run/cilium
 
-# Start script
-check_kubectl_installed
-uninstall_kubectl
+# Remove Cilium configuration and data directories if they exist
+echo "Removing Cilium configuration and data..."
+sudo rm -rf /var/lib/cilium
+sudo rm -rf /etc/cilium
 
-echo "K8s have been successfully removed!"
+echo "Kubernetes, K3s, and related components have been successfully removed!"

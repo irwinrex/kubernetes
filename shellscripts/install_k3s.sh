@@ -1,62 +1,114 @@
 #!/bin/bash
 
-# Download and install K3s with specified options
-curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC='--flannel-backend=none --disable=traefik,metrics-server,network-policy --datastore-endpoint="etcd"' sh -
+# Set flags for exit on error and pipefail
+set -euo pipefail
 
-# Wait for K3s to start
-echo "Waiting for K3s to start..."
-sleep 20
+# Function to install K3s
+install_k3s() {
+    echo "Installing K3s..."
+    curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC='--flannel-backend=none --disable=traefik,metrics-server,network-policy --datastore-endpoint="etcd"' sh -
 
-# Create .kube directory if it doesn't exist
-mkdir -p ~/.kube/
+    # Wait for K3s to start
+    echo "Waiting for K3s to start..."
+    sleep 20
 
-# Copy the K3s kubeconfig file to the user's kube config file
-sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+    # Create .kube directory if it doesn't exist
+    mkdir -p ~/.kube/
 
-# Change permissions for the kube config file
-chmod 600 ~/.kube/config
+    # Copy the K3s kubeconfig file to the user's kube config file
+    sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+    # Update the Kubeconfig file to use the host's IP
+    sudo chmod 600 ~/.kube/config
+    sudo chown $(whoami):$(whoami) ~/.kube/config /etc/rancher/k3s/k3s.yaml
 
-# Change ownership of the kube config file to the current user
-sudo chown $(whoami):$(whoami) ~/.kube/config
+    # Export KUBECONFIG
+    export KUBECONFIG=~/.kube/config
 
-# Verify K3s installation
-kubectl get nodes
+    # Verify K3s installation
+    kubectl get nodes
+}
 
-# Provide feedback on completion
-echo "K3s installation complete! Kubernetes is running and kube config is set up."
+# Function to install kubectl
+install_kubectl() {
+    echo "Installing kubectl..."
+    KUBECTL_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)
+    curl -LO "https://dl.k8s.io/release/$KUBECTL_VERSION/bin/linux/amd64/kubectl"
+    curl -LO "https://dl.k8s.io/release/$KUBECTL_VERSION/bin/linux/amd64/kubectl.sha256"
 
-# Install kubectl
-curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl.sha256"
-echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check
+    # Verify the checksum of kubectl
+    echo "Verifying kubectl checksum..."
+    echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check
 
-sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
-chmod 700 kubectl
-mkdir -p ~/.local/bin
-mv ./kubectl ~/.local/bin/kubectl
-rm -rvf kubectl
-rm -rvf kubectl.sha256
-kubectl version --client --output=yaml
+    # Install kubectl
+    sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
 
-# Add the Metrics Server Helm repository and update it
-helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
-helm repo update
+    # Clean up kubectl files
+    rm -rvf kubectl kubectl.sha256
 
-# Install the Metrics Server with the --kubelet-insecure-tls argument
-helm install metrics-server metrics-server/metrics-server --namespace kube-system --set args[0]=--kubelet-insecure-tls
+    # Verify kubectl installation
+    kubectl version --client --output=yaml
+}
 
-# Wait for 30s
-echo 'Wait for 30 Seconds'
+# Function to install Helm
+install_helm() {
+    echo "Installing Helm..."
+    curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+    chmod +x get_helm.sh
+    ./get_helm.sh
+    rm -f get_helm.sh
 
-sleep 30
+    # Verify Helm installation
+    echo "Verifying Helm installation..."
+    if helm version >/dev/null 2>&1; then
+        echo "Helm installed successfully."
+    else
+        echo "Helm installation failed."
+        exit 1
+    fi
+}
 
-# Installing Cilium by helm
+# Function to install Cilium
+install_cilium() {
+    echo "Installing Cilium..."
+    export KUBECONFIG=~/.kube/config
+    helm repo add cilium https://helm.cilium.io/
+    helm repo update
+    helm install cilium cilium/cilium --version 1.16.2 \
+        --namespace kube-system \
+        --set operator.replicas=1 \
+        --set kubeProxyReplacement=true \
+        --set hostService.enabled=true
+    
+    echo "Waiting for Cilium to initialize..."
+    sleep 30
 
-helm repo add cilium https://helm.cilium.io/
-helm repo update
+    # Verify Cilium installation
+    kubectl -n kube-system get pods -l k8s-app=cilium
+}
 
-helm install cilium cilium/cilium --version 1.16.2 \
-   --namespace kube-system \
-   --set operator.replicas=1
+# Function to install Metrics Server
+install_metrics() {
+    echo "Installing Metrics Server..."
+    helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/
+    helm repo update
 
+    # Install the Metrics Server with the --kubelet-insecure-tls argument
+    helm install metrics-server metrics-server/metrics-server --namespace kube-system --set args[0]=--kubelet-insecure-tls
 
+    # Wait for 30 seconds to allow Metrics Server to initialize
+    echo 'Waiting for Metrics Server to initialize...'
+    sleep 30
+
+    # Verify Metrics Server installation
+    kubectl -n kube-system get pods -l k8s-app=metrics-server
+}
+
+# Main script execution
+install_k3s
+install_kubectl
+install_helm
+install_cilium
+install_metrics
+
+# Confirm installation completed
+echo "Installation Completed Successfully!"
