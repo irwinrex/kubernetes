@@ -11,7 +11,7 @@ check_command_exists() {
 # Uninstall Cilium if installed
 echo "Uninstalling Cilium..."
 if check_command_exists "kubectl" && kubectl get pods -n kube-system | grep -q "cilium"; then
-    helm uninstall cilium --namespace kube-system
+    helm uninstall cilium --namespace kube-system || echo "Failed to uninstall Cilium."
     echo "Cilium has been successfully uninstalled!"
 else
     echo "Cilium is not installed or kubectl is unavailable."
@@ -92,8 +92,34 @@ if check_command_exists "kubectl"; then
         sudo rm /usr/local/bin/kubectl
         echo "Removed kubectl from /usr/local/bin."
     fi
+    if [ -f "/usr/bin/kubectl" ]; then
+        sudo rm /usr/bin/kubectl
+        echo "Removed kubectl from /usr/bin."
+    fi
 else
     echo "kubectl is not installed."
 fi
 
-echo "Kubernetes, K3s, and kubectl have been successfully removed!"
+# Uninstall any remaining Kubernetes packages
+echo "Removing remaining Kubernetes packages..."
+if check_command_exists "apt"; then
+    sudo apt-get remove --purge -y kubelet kubeadm kubectl kubernetes-cni kubelet kubectl
+    sudo apt-get autoremove -y
+fi
+
+# Remove remaining Kubernetes directories
+echo "Removing any remaining Kubernetes directories..."
+sudo rm -rf /etc/kubernetes
+sudo rm -rf /var/lib/etcd
+sudo rm -rf /etc/cni
+sudo rm -rf /var/lib/cni
+sudo rm -rf /var/run/kubernetes
+sudo rm -rf /var/lib/kubelet
+sudo rm -rf /var/run/cilium
+
+# Remove Cilium configuration and data directories if they exist
+echo "Removing Cilium configuration and data..."
+sudo rm -rf /var/lib/cilium
+sudo rm -rf /etc/cilium
+
+echo "Kubernetes, K3s, and related components have been successfully removed!"
