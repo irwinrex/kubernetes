@@ -14,7 +14,7 @@ metadata:
 data:
   prometheus.yml: |
     global:
-      scrape_interval: 15s  # Collect metrics every 15 seconds
+      scrape_interval: 2s  # Collect metrics every 2 seconds
 
     # Alertmanager config
     alerting:
@@ -76,7 +76,7 @@ data:
           - targets: ['kube-state-metrics.monitoring.svc.cluster.local:8080']
 
 ---
-# Prometheus Deployment (with resource limits, using latest image)
+# Prometheus Deployment (with resource limits, using latest stable image)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -94,7 +94,7 @@ spec:
     spec:
       containers:
       - name: prometheus
-        image: prom/prometheus:v2.47.0  # Latest Prometheus version
+        image: prom/prometheus:v2.47.0  # Specific Prometheus version
         args:
           - "--config.file=/etc/prometheus/prometheus.yml"
           - "--storage.tsdb.path=/prometheus/"
@@ -115,7 +115,7 @@ spec:
             cpu: "400m"
       volumes:
       - name: prometheus-storage
-        emptyDir: {}
+        emptyDir: {}  # For production, consider PersistentVolumeClaim
       - name: prometheus-config
         configMap:
           name: prometheus-server-conf
@@ -135,7 +135,7 @@ spec:
   selector:
     app: prometheus-server
 ---
-# Prometheus Alertmanager Deployment (with latest version)
+# Prometheus Alertmanager Deployment (using stable version)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -153,7 +153,7 @@ spec:
     spec:
       containers:
       - name: alertmanager
-        image: prom/alertmanager:latest # Latest Alertmanager version
+        image: prom/alertmanager:v0.25.0  # Pin to specific stable version
         imagePullPolicy: IfNotPresent
         args:
           - "--config.file=/etc/alertmanager/alertmanager.yml"
@@ -167,7 +167,7 @@ spec:
           mountPath: /alertmanager
       volumes:
       - name: alertmanager-storage
-        emptyDir: {}
+        emptyDir: {}  # Consider using PersistentVolumeClaim for production
       - name: alertmanager-config
         configMap:
           name: alertmanager-config
@@ -180,12 +180,37 @@ metadata:
   namespace: monitoring
 data:
   alertmanager.yml: |
+    global:
+      resolve_timeout: 1m
+      slack_api_url: "https://hooks.slack.com/services/XXXXXXXXXXX"  # Replace with your actual Slack webhook URL
+
     route:
-      receiver: 'default'
+      receiver: 'slack-notifications'
+      group_by: ['alertname']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 3h
+
     receivers:
-      - name: 'default'
-        email_configs:
-          - to: 'youremail@example.com'  # Set your email here
+      - name: 'slack-notifications'
+        slack_configs:
+          - channel: '#monitoring-alert'  # Replace with your Slack channel name
+            send_resolved: true
+            icon_url: "https://avatars3.githubusercontent.com/u/3380462"  # Correct URL format
+            title: "[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}"
+            text: >-
+              *Alert:* {{ .Annotations.title }}
+              *Description:* {{ .Annotations.description }}
+              *Severity:* {{ .Labels.severity }}
+
+    inhibit_rules:
+      - source_match:
+          severity: 'critical'
+        target_match:
+          severity: 'warning'
+        equal: ['alertname', 'job', 'instance']
+
+
 ---
 # Alertmanager Service
 apiVersion: v1
@@ -202,7 +227,7 @@ spec:
   selector:
     app: alertmanager
 ---
-# Grafana Deployment (with latest version)
+# Grafana Deployment (pinned to stable version)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -220,7 +245,7 @@ spec:
     spec:
       containers:
       - name: grafana
-        image: grafana/grafana:11.1.7 # Latest Grafana version
+        image: grafana/grafana:11.1.7 # Pinned Grafana version
         ports:
         - containerPort: 3000
         env:
@@ -265,7 +290,7 @@ data:
       access: proxy
       isDefault: true
 ---
-# kube-state-metrics Deployment (using latest version)
+# kube-state-metrics Deployment (pinned version)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -283,7 +308,7 @@ spec:
     spec:
       containers:
       - name: kube-state-metrics
-        image: bitnami/kube-state-metrics:latest  # Latest kube-state-metrics
+        image: bitnami/kube-state-metrics:2.7.0  # Pinned version
         ports:
         - containerPort: 8080
         resources:
@@ -308,7 +333,7 @@ spec:
   selector:
     app: kube-state-metrics
 ---
-# Node Exporter DaemonSet (using latest version)
+# Node Exporter DaemonSet (pinned version)
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -325,7 +350,7 @@ spec:
     spec:
       containers:
       - name: node-exporter
-        image: prom/node-exporter:v1.7.0  # Latest node-exporter
+        image: prom/node-exporter:v1.7.0  # Pinned node-exporter version
         ports:
         - containerPort: 9100
         resources:
