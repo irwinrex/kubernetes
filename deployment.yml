@@ -32,7 +32,7 @@ spec:
       containers:
       - name: sample-api
         image: dockerrexxzz/sampleapi:latest  # Replace with your Docker image name and tag
-        imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
         envFrom:
           - secretRef:
               name: secret-env  # Environment variables from Secret
