@@ -3,10 +3,26 @@
 # Set flags for exit on error and pipefail
 set -euo pipefail
 
+# Function to wait for K3s to be ready
+wait_for_k3s() {
+    echo "Waiting for K3s to become ready..."
+    for i in {1..10}; do
+        if kubectl get nodes >/dev/null 2>&1; then
+            echo "K3s is ready."
+            return
+        fi
+        echo "K3s not ready yet. Waiting 10 seconds..."
+        sleep 10
+    done
+    echo "K3s did not become ready in time!"
+    exit 1
+}
+
 # Function to install K3s
 install_k3s() {
     echo "Installing K3s..."
-    curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC='--flannel-backend=none --disable=traefik,metrics-server,network-policy --datastore-endpoint="etcd"' sh -
+    curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--cluster-init --flannel-backend=none --disable=traefik,metrics-server,network-policy" sh -
+
 
     # Wait for K3s to start
     echo "Waiting for K3s to start..."
@@ -25,7 +41,7 @@ install_k3s() {
     export KUBECONFIG=~/.kube/config
 
     # Verify K3s installation
-    kubectl get nodes
+    wait_for_k3s
 }
 
 # Function to install kubectl
@@ -104,8 +120,8 @@ install_metrics() {
 }
 
 # Main script execution
-install_k3s
 install_kubectl
+install_k3s
 install_helm
 install_cilium
 install_metrics
