@@ -22,7 +22,6 @@ Clone the repository and execute the necessary scripts:
 git clone https://github.com/irwinrex/kubernetes.git
 chmod +x shellscripts/*.sh
 sh shellscripts/install_k3s.sh             # K3s Installation
-sh shellscripts/install_helm.sh           # Install Helm
 kubectl get pod -n kube-system
 ```
 
@@ -44,7 +43,6 @@ If using Minikube, configure Docker to use Minikube's Docker daemon:
 ```
 chmod +x shellscripts/*.sh
 sh shellscripts/install_minikube.sh       # Install minikube
-sh shellscripts/install_helm.sh           # Install Helm
 kubectl get pod -n kube-system
 eval $(minikube docker-env)
 ```
@@ -79,17 +77,17 @@ sudo nano /etc/hosts                    # Add domain mapping
 
 # Add the following line:
 
-127.0.0.1 sample-ing.local
-Access the application via:
+<!-- 127.0.0.1 sample-ing.local
+Access the application via: -->
 
 
-```
+<!-- ```
 curl -L http://sample-ing.local
-```
+``` -->
 
 # or open in a browser:
 
-http://sample-ing.local
+<!-- http://sample-ing.local -->
 
 ## Uninstallation Instructions
 
