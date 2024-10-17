@@ -17,11 +17,15 @@ kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f 
 
 # Step 4: Install the kube-prometheus-stack
 echo "Installing kube-prometheus-stack in the '$NAMESPACE' namespace..."
-helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+helm upgrade -i kube-prometheus-stack prometheus-community/kube-prometheus-stack \
     --namespace $NAMESPACE \
     --set prometheus.prometheusSpec.replicaCount=1 \
     --set alertmanager.alertmanagerSpec.replicaCount=1 \
-    --set grafana.replicaCount=1
+    --set grafana.replicaCount=1 \
+    --set kube-state-metrics.replicaCount=1 \
+    --set prometheus-node-exporter.replicaCount=1
+
+
 
 # Step 5: Wait for the installation to complete
 echo "Waiting for Prometheus and Grafana to be ready..."
