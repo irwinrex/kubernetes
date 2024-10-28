@@ -199,6 +199,32 @@ spec:
   type: ClusterIP  # Service type
 
 ---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sample-api-ingress
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web, websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+spec:
+  rules:
+  - host: sample-ingress.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: sample-service  # Service name to route traffic to
+            namespace: irwinrex
+            port:
+              name: sample-svc-port  # Service port
+  tls:
+  - hosts:
+    - sample-ingress.local
+    secretName: tls-secret
+
 # Ingress resource to route traffic to the sample-service
 # apiVersion: networking.k8s.io/v1
 # kind: Ingress

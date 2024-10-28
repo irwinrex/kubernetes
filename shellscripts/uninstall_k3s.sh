@@ -53,6 +53,10 @@ else
     echo "systemctl not found. Skipping k3s service management."
 fi
 
+# Uninstall k3s
+sh /usr/local/bin/k3s-killall.sh
+sh /usr/local/bin/k3s-uninstall.sh
+
 # Remove k3s binary
 echo "Removing k3s binary..."
 if [ -f "/usr/local/bin/k3s" ]; then
@@ -90,10 +94,15 @@ if check_command_exists "kubectl"; then
     # Attempt to remove kubectl from common installation paths
     if [ -f "/usr/local/bin/kubectl" ]; then
         sudo rm /usr/local/bin/kubectl
+        sudo rm -f /etc/systemd/system/k3s.service
+        sudo rm -f /etc/systemd/system/k3s-agent.service
+        sudo rm -f /usr/local/bin/k3s
         echo "Removed kubectl from /usr/local/bin."
     fi
     if [ -f "/usr/bin/kubectl" ]; then
         sudo rm /usr/bin/kubectl
+        sudo rm -rf /etc/rancher/k3s
+        sudo rm -rf /var/log/k3s.log   
         echo "Removed kubectl from /usr/bin."
     fi
 else
