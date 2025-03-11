@@ -56,25 +56,15 @@ install_cilium() {
     helm repo add cilium https://helm.cilium.io/
     helm repo update
 
-    helm install cilium cilium/cilium \
-        --namespace kube-system \
-        --version 1.15.2 \
-        --set operator.replicas=1 \
-        --set kubeProxyReplacement=strict \
-        --set hostServices.enabled=true \
-        --set externalIPs.enabled=true \
-        --set nodePort.enabled=true \
-        --set hostPort.enabled=true \
-        --set ipam.mode=kubernetes \
-        --set hubble.relay.enabled=true \
-        --set hubble.ui.enabled=true \
-        --set tunnel=disabled \
-        --set autoDirectNodeRoutes=true \
-        --set ipv4NativeRoutingCIDR=10.244.0.0/16 \
-        --set resources.requests.cpu=100m \
-        --set resources.requests.memory=512Mi
+    # Set correct k0s API server details for Cilium
+    K8S_API_IP=$(hostname -I | awk '{print $1}')
 
-    # Wait for cilium pods
+    helm install cilium cilium/cilium --version 1.17.1 \
+   --namespace kube-system \
+   --set kubeProxyReplacement=false \
+   --set operator.replicas=1
+
+    # Wait for cilium pods to be ready
     kubectl -n kube-system wait --for=condition=ready pod -l k8s-app=cilium --timeout=300s
 }
 
@@ -86,12 +76,6 @@ install_cilium
 # Confirm installation completed
 echo "k0s and Cilium Installation Completed Successfully!"
 
-# Optional: Restart k0s for finalization
-# sudo k0s stop
-# sudo k0s start
-
-# Verify installation with
-echo "Verify Cilium status:"
-kubectl get pods -n kube-system -l k8s-app=cilium
+sleep 240
 echo "Run Cilium connectivity test:"
-kubectl exec -n kube-system -ti cilium-xxxxx -- cilium connectivity test
+kubectl exec -n kube-system ds/cilium -- cilium connectivity test

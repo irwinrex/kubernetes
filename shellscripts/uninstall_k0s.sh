@@ -10,6 +10,9 @@ uninstall_cilium() {
         echo "Waiting for Cilium resources to terminate..."
         kubectl delete crd ciliumnetworkpolicies.cilium.io --ignore-not-found
         kubectl delete crd ciliumendpoints.cilium.io --ignore-not-found
+        kubectl delete crd ciliumidentities.cilium.io --ignore-not-found
+        kubectl delete crd ciliumnodes.cilium.io --ignore-not-found
+        kubectl delete crd ciliumexternalworkloads.cilium.io --ignore-not-found
         kubectl delete ns kube-system --ignore-not-found
         echo "Cilium uninstalled successfully."
     else
@@ -20,13 +23,17 @@ uninstall_cilium() {
 # Function to stop and uninstall k0s
 uninstall_k0s() {
     echo "Stopping k0s..."
-    sudo k0s stop
+    sudo systemctl stop k0scontroller.service || true
+    sudo k0s stop || true
+
+    sleep 5
 
     echo "Uninstalling k0s..."
-    sudo k0s reset --debug
+    sudo k0s reset --debug || true
 
     echo "Removing k0s system files..."
-    sudo rm -rf /var/lib/k0s /etc/systemd/system/k0s*.service ~/.kube/config /etc/systemd/system/k0scontroller.service /usr/local/bin/k0s
+    sudo rm -rf /var/lib/k0s /etc/systemd/system/k0s*.service ~/.kube/config \
+                /etc/systemd/system/k0scontroller.service /usr/local/bin/k0s
 
     echo "k0s uninstalled successfully."
 }
@@ -35,6 +42,7 @@ uninstall_k0s() {
 uninstall_kubectl() {
     echo "Removing kubectl..."
     sudo rm -f /usr/local/bin/kubectl
+    sudo rm -rf ~/.kube
     echo "kubectl removed successfully."
 }
 
