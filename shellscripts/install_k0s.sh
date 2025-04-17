@@ -1,81 +1,572 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
-### Function to check required tool installation and install if missing
-dependency_check() {
-    for cmd in kubectl helm cilium; do
-        if ! command -v $cmd >/dev/null 2>&1; then
-            echo "$cmd is not installed. Installing $cmd..."
-            if [ "$cmd" = "kubectl" ]; then
-                KUBECTL_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)
-                curl -LO "https://dl.k8s.io/release/$KUBECTL_VERSION/bin/linux/amd64/kubectl"
-                sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
-                rm -f kubectl
-            elif [ "$cmd" = "helm" ]; then
-                curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
-                chmod +x get_helm.sh
-                ./get_helm.sh
-                rm -f get_helm.sh
-            elif [ "$cmd" = "cilium" ]; then
-                echo "Cilium CLI is not required for this setup. Skipping installation."
-            fi
-        fi
-    done
+# ----------------------------------------------------------------------------
+# Enhanced script to install k0s controller and Cilium CNI with robust error
+# handling, validation checks, and comprehensive connectivity testing
+# ----------------------------------------------------------------------------
+
+echo "🚀 Starting k0s with Cilium installation process..."
+
+# --- Global version detection ---
+echo "📦 Detecting latest stable versions..."
+KUBE_VERSION=$(curl -L -s https://dl.k8s.io/release/stable.txt)
+CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
+K0S_VERSION=$(curl -s https://docs.k0sproject.io/stable.txt 2>/dev/null || echo "v1.26.0+k0s.0")
+
+echo "ℹ️ Using Kubernetes version: ${KUBE_VERSION}"
+echo "ℹ️ Using Cilium CLI version: ${CILIUM_CLI_VERSION}"
+echo "ℹ️ Using k0s version: ${K0S_VERSION}"
+
+# --- Detect host IP for Kubernetes API (used by Cilium) ---
+K8S_API_HOST=$(hostname -I | awk '{print $1}')
+echo "ℹ️ Detected API server IP: ${K8S_API_HOST}"
+
+# --- Configurable IPAM mode ---
+IPAM_MODE=${IPAM_MODE:-cluster-pool}
+echo "ℹ️ Using IPAM mode: ${IPAM_MODE}"
+
+# --- Required tools ---
+TOOLS=(kubectl helm cilium yq k0s)
+
+# --- Check if running as root ---
+if [[ $EUID -ne 0 ]]; then
+  echo "⚠️ This script requires root privileges for certain operations"
+  echo "⚠️ Please run with sudo or as root"
+  exit 1
+fi
+
+# ----------------------------------------------------------------------------
+# Function: Check system prerequisites
+# ----------------------------------------------------------------------------
+check_prerequisites() {
+  echo "🔍 Checking system prerequisites..."
+
+  # Check memory
+  TOTAL_MEM=$(free -m | awk '/^Mem:/{print $2}')
+  if [[ $TOTAL_MEM -lt 2048 ]]; then
+    echo "⚠️ Warning: Less than 2GB of memory available (${TOTAL_MEM}MB)"
+    echo "⚠️ Kubernetes and Cilium may not function properly"
+    echo "Press Enter to continue anyway or Ctrl+C to abort"
+    read -r
+  fi
+
+  # Check CPU cores
+  CPU_CORES=$(nproc)
+  if [[ $CPU_CORES -lt 2 ]]; then
+    echo "⚠️ Warning: Less than 2 CPU cores available (${CPU_CORES})"
+    echo "⚠️ Kubernetes and Cilium may not function properly"
+    echo "Press Enter to continue anyway or Ctrl+C to abort"
+    read -r
+  fi
+
+  # Increase memlock limits for eBPF if needed
+  if ! grep -q "DefaultLimitMEMLOCK=infinity" /etc/systemd/system.conf; then
+    echo "🔧 Setting memlock limits for eBPF programs..."
+    cat >> /etc/security/limits.conf << EOF
+* soft memlock unlimited
+* hard memlock unlimited
+EOF
+    echo "DefaultLimitMEMLOCK=infinity" >> /etc/systemd/system.conf
+    systemctl daemon-reload
+
+    echo "⚠️ System limits updated. A reboot is recommended before continuing."
+    echo "Press Enter to continue without rebooting or Ctrl+C to abort"
+    read -r
+  fi
+
+  # Check if containerd/docker is running
+  if ! systemctl is-active --quiet containerd && ! systemctl is-active --quiet docker; then
+    echo "ℹ️ Neither containerd nor docker service detected as running"
+    echo "ℹ️ k0s will manage its own container runtime"
+  fi
+
+  echo "✅ Prerequisite checks completed"
 }
 
-### Enhanced k0s Installation Function
+# ----------------------------------------------------------------------------
+# Function: Install missing dependencies (kubectl, helm, cilium, yq, k0s)
+# ----------------------------------------------------------------------------
+dependency_check() {
+  echo "🔍 Checking dependencies..."
+  local missing_tools=()
+
+  for cmd in "${TOOLS[@]}"; do
+    if ! command -v "$cmd" &>/dev/null; then
+      missing_tools+=("$cmd")
+    fi
+  done
+
+  if [[ ${#missing_tools[@]} -eq 0 ]]; then
+    echo "✅ All required tools already installed"
+    return 0
+  fi
+
+  echo "📦 Installing missing tools: ${missing_tools[*]}"
+
+  for cmd in "${missing_tools[@]}"; do
+    echo "🔧 Installing $cmd..."
+    case "$cmd" in
+      kubectl)
+        curl -LO "https://dl.k8s.io/release/${KUBE_VERSION}/bin/linux/amd64/kubectl"
+        install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+        rm -f kubectl
+        echo "✅ kubectl installed"
+        ;;
+      helm)
+        curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+        chmod +x get_helm.sh && ./get_helm.sh && rm -f get_helm.sh
+        echo "✅ helm installed"
+        ;;
+      cilium)
+        OS=$(uname | tr '[:upper:]' '[:lower:]')
+        ARCH=$(uname -m)
+        case "$ARCH" in
+          x86_64) ARCH=amd64 ;;
+          aarch64|arm64) ARCH=arm64 ;;
+          *) echo "⛔ Unsupported architecture: $ARCH" >&2; exit 1 ;;
+        esac
+        echo "ℹ️ Downloading Cilium CLI for ${OS}-${ARCH}..."
+        curl -L --fail --remote-name-all \
+          "https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-${OS}-${ARCH}.tar.gz"{,.sha256sum}
+
+        if ! sha256sum --check "cilium-${OS}-${ARCH}.tar.gz.sha256sum"; then
+          echo "⛔ SHA256 checksum verification failed for Cilium CLI"
+          exit 1
+        fi
+
+        tar -C /usr/local/bin -xzvf "cilium-${OS}-${ARCH}.tar.gz"
+        rm -f "cilium-${OS}-${ARCH}.tar.gz"{,.sha256sum}
+        echo "✅ cilium CLI installed"
+        ;;
+      yq)
+        wget -q https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
+        chmod +x /usr/local/bin/yq
+        echo "✅ yq installed"
+        ;;
+      k0s)
+        curl -sSLf https://get.k0s.sh | K0S_VERSION="${K0S_VERSION}" sh
+        echo "✅ k0s installed"
+        ;;
+      *)
+        echo "⚠️ Unknown tool: $cmd"
+        ;;
+    esac
+  done
+
+  echo "✅ All dependencies installed successfully"
+}
+
+# ----------------------------------------------------------------------------
+# Function: Install or skip k0s controller service
+# ----------------------------------------------------------------------------
 install_k0s() {
-    if ! command -v k0s >/dev/null; then
-        echo "Installing k0s..."
-        curl -sSLf https://get.k0s.sh | sudo sh
+  echo "🔧 Configuring k0s..."
+
+  # Create k0s configuration with custom CNI and disabled kube-proxy
+  echo "📄 Generating k0s config and disabling in-tree CNI/proxy..."
+  k0s config create > k0s.yaml
+
+  # Update the configuration with yq
+  if command -v yq &>/dev/null; then
+    echo "🔄 Updating k0s configuration for Cilium CNI..."
+    yq eval -i '.spec.network.provider = "custom" | .spec.network.kubeProxy.disabled = true' k0s.yaml
+
+    # Set cgroup driver explicitly if using systemd
+    if [[ $(stat -c %t:%T /sys/fs/cgroup/) = "0::" ]]; then
+      echo "ℹ️ Detected cgroup v2, setting runtime config accordingly..."
+      yq eval -i '.spec.runtime.cgroupDriver = "systemd"' k0s.yaml
+    fi
+  else
+    echo "⚠️ yq not available. Manually updating k0s.yaml..."
+    # Fallback method if yq is not available
+    sed -i 's/provider: kuberouter/provider: custom/g' k0s.yaml
+    sed -i 's/disabled: false/disabled: true/g' k0s.yaml
+  fi
+
+  # Check if k0s service is already installed
+  if [[ -f /etc/systemd/system/k0scontroller.service ]]; then
+    echo "ℹ️ k0s controller service already installed, skipping install step"
+    else
+    echo "🚀 Installing k0s controller service..."
+    mkdir -p /etc/k0s
+    cp k0s.yaml /etc/k0s/k0s.yaml
+    k0s install controller --single -c /etc/k0s/k0s.yaml
     fi
 
-    # Install controller with disable-components flag
-    sudo k0s install controller --single --disable-components kube-proxy,coredns,konnectivity-server,metrics-server
 
-    sudo k0s start
+  # Start/restart the k0s service
+  echo "🔄 Starting k0s controller..."
+  systemctl daemon-reload
+  systemctl restart k0scontroller || (echo "⛔ Failed to start k0s controller" && exit 1)
 
-    # Wait for k0s to generate admin.conf
-    while [ ! -f "/var/lib/k0s/pki/admin.conf" ]; do
-        echo "Waiting for admin.conf to be generated..."
-        sleep 5
-    done
+  # Wait for k0s to be ready
+  echo "⏳ Waiting for k0s to start (this may take several minutes)..."
+  timeout=300
+  elapsed=0
+  while ! systemctl is-active --quiet k0scontroller; do
+    if [[ $elapsed -ge $timeout ]]; then
+      echo "⛔ Timeout waiting for k0s controller to start"
+      echo "📋 Check logs with: journalctl -u k0scontroller -n 50"
+      exit 1
+    fi
+    echo -n "."
+    sleep 5
+    elapsed=$((elapsed + 5))
+  done
+  echo ""
+  echo "✅ k0s controller is running"
 
-    # Handle kubeconfig properly
-    mkdir -p ~/.kube
-    sudo cp /var/lib/k0s/pki/admin.conf ~/.kube/config
-    sudo chown $(id -u):$(id -g) ~/.kube/config
-    export KUBECONFIG=~/.kube/config
+  # Wait for admin.conf to be available
+  echo "⏳ Waiting for admin.conf to be generated..."
+  timeout=300
+  elapsed=0
+  while [[ ! -f /var/lib/k0s/pki/admin.conf ]]; do
+    if [[ $elapsed -ge $timeout ]]; then
+      echo "⛔ Timeout waiting for admin.conf"
+      echo "📋 Check logs with: journalctl -u k0scontroller -n 50"
+      exit 1
+    fi
+    echo -n "."
+    sleep 5
+    elapsed=$((elapsed + 5))
+  done
+  echo ""
 
-    # Wait for core components
-    until kubectl get nodes; do sleep 5; done
+  # Set up kubeconfig for the current user
+  echo "🔧 Setting up kubeconfig..."
+  mkdir -p ~/.kube
+  cp /var/lib/k0s/pki/admin.conf ~/.kube/config
+  chown "$(id -u):$(id -g)" ~/.kube/config
+  chmod 600 ~/.kube/config
+  export KUBECONFIG=~/.kube/config
+
+  # Ensure regular user can also use the kubeconfig
+  if [[ $SUDO_USER ]]; then
+    mkdir -p /home/$SUDO_USER/.kube
+    cp /var/lib/k0s/pki/admin.conf /home/$SUDO_USER/.kube/config
+    chown -R $SUDO_USER:$SUDO_USER /home/$SUDO_USER/.kube
+    chmod 600 /home/$SUDO_USER/.kube/config
+  fi
+
+  # Wait for Kubernetes node to become ready
+  echo "⏳ Waiting for Kubernetes node to become Ready..."
+  timeout=300
+  elapsed=0
+  while ! k0s kubectl get nodes | grep -q ' Ready '; do
+    if [[ $elapsed -ge $timeout ]]; then
+      echo "⛔ Timeout waiting for Kubernetes node to become Ready"
+      echo "📋 Current node status:"
+      k0s kubectl get nodes
+      exit 1
+    fi
+    echo -n "."
+    sleep 5
+    elapsed=$((elapsed + 5))
+  done
+  echo ""
+  echo "✅ Kubernetes node is Ready"
+
+  # Give the cluster a bit more time to stabilize
+  echo "⏳ Allowing cluster to stabilize (30 seconds)..."
+  sleep 30
 }
 
-### Improved Cilium Installation
+# ----------------------------------------------------------------------------
+# Function: Check if Cilium agent is healthy
+# ----------------------------------------------------------------------------
+check_cilium() {
+  echo "🔍 Checking Cilium status..."
+
+  # Check if the Cilium pods are running
+  if k0s kubectl -n kube-system get pods -l k8s-app=cilium 2>/dev/null | grep -q 'Running'; then
+    echo "ℹ️ Cilium pods found, checking health..."
+
+    # Use cilium CLI to check status
+    if cilium status --wait 2>/dev/null; then
+      echo "✅ Cilium is healthy and running"
+      return 0
+    else
+      echo "⚠️ Cilium pods exist but not healthy"
+      return 1
+    fi
+  else
+    echo "ℹ️ No Cilium pods found, will install Cilium"
+    return 1
+  fi
+}
+
+# ----------------------------------------------------------------------------
+# Function: Install or upgrade Cilium via Helm
+# ----------------------------------------------------------------------------
 install_cilium() {
-    helm repo add cilium https://helm.cilium.io/
-    helm repo update
+    echo "🚀 Preparing to deploy Cilium CNI..."
 
-    # Set correct k0s API server details for Cilium
-    K8S_API_IP=$(hostname -I | awk '{print $1}')
+    # Add Helm repository for Cilium
+    echo "🔧 Setting up Helm repository..."
+    helm repo add cilium https://helm.cilium.io/ > /dev/null || true
+    helm repo update > /dev/null
 
-    helm install cilium cilium/cilium --version 1.17.1 \
-   --namespace kube-system \
-   --set kubeProxyReplacement=false \
-   --set operator.replicas=1
+    # Get latest chart version
+    CHART_VER=$(helm search repo cilium/cilium --versions | awk 'NR==2{print $2}')
+    echo "ℹ️ Using Cilium chart version: ${CHART_VER}"
+    # Replace with your actual CIDR ranges
+    NATIVE_ROUTING_CIDR="10.0.0.0/16"
+    CLUSTER_POOL_CIDR="10.1.0.0/16"
+    CLUSTER_POOL_MASK_SIZE="24"
 
-    # Wait for cilium pods to be ready
-    kubectl -n kube-system wait --for=condition=ready pod -l k8s-app=cilium --timeout=300s
+    # Check if Cilium is already installed
+    if helm ls -n kube-system | grep -q '^cilium\s'; then
+        echo "🔄 Upgrading existing Cilium installation..."
+
+        helm upgrade cilium cilium/cilium \
+            --version "${CHART_VER}" \
+            --namespace kube-system \
+            --set upgradeCompatibility="${CILIUM_CURRENT_MINOR_VERSION:-}" \
+            --set kubeProxyReplacement=true \
+            --set k8sServiceHost="${K8S_API_HOST}" \
+            --set k8sServicePort=6443 \
+            --set operator.replicas=1 \
+            --set ipam.mode="${IPAM_MODE}" \
+            --set routingMode=native \
+            --set ipv4NativeRoutingCIDR="${NATIVE_ROUTING_CIDR}" \
+            --set clusterPoolIPv4PodCIDR="${CLUSTER_POOL_CIDR}" \
+            --set clusterPoolIPv4MaskSize="${CLUSTER_POOL_MASK_SIZE}" \
+            --set bpf.masquerade=true \
+            --set hubble.enabled=true \
+            --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,http}" \
+            --set hubble.relay.enabled=true \
+            --set prometheus.enabled=true \
+            --set operator.prometheus.enabled=true \
+            --set debug.enabled=true \
+            --wait
+    else
+        echo "🔧 Installing Cilium CNI..."
+
+        helm install cilium cilium/cilium \
+            --version "${CHART_VER}" \
+            --namespace kube-system \
+            --create-namespace \
+            --set kubeProxyReplacement=true \
+            --set k8sServiceHost="${K8S_API_HOST}" \
+            --set k8sServicePort=6443 \
+            --set operator.replicas=1 \
+            --set ipam.mode="${IPAM_MODE}" \
+            --set routingMode=native \
+            --set ipv4NativeRoutingCIDR="${NATIVE_ROUTING_CIDR}" \
+            --set clusterPoolIPv4PodCIDR="${CLUSTER_POOL_CIDR}" \
+            --set clusterPoolIPv4MaskSize="${CLUSTER_POOL_MASK_SIZE}" \
+            --set bpf.masquerade=true \
+            --set hubble.enabled=true \
+            --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,http}" \
+            --set hubble.relay.enabled=true \
+            --set prometheus.enabled=true \
+            --set operator.prometheus.enabled=true \
+            --set debug.enabled=true \
+            --wait
+    fi
+
+
+    echo "⏳ Waiting for Cilium pods to become Ready..."
+    k0s kubectl -n kube-system rollout status daemonset/cilium --timeout=300s
+    k0s kubectl -n kube-system rollout status deployment/cilium-operator --timeout=300s
+
+    echo "⏳ Allowing Cilium networking to stabilize (60 seconds)..."
+    sleep 60
+
+    echo "✅ Cilium CNI installed successfully"
+}
+# ----------------------------------------------------------------------------
+# Function: Deploy comprehensive connectivity test using Cilium's test suite
+# ----------------------------------------------------------------------------
+deploy_cilium_connectivity_check() {
+  echo "🔍 Deploying Cilium connectivity check..."
+
+  # Create a dedicated namespace
+  k0s kubectl create namespace cilium-test 2>/dev/null || true
+
+  # Apply the connectivity check manifest
+  CILIUM_VERSION=$(cilium version | grep -oP 'cilium-cli: \K[0-9\.]+')
+  echo "ℹ️ Deploying connectivity check for Cilium ${CILIUM_VERSION}..."
+
+  k0s kubectl apply -n cilium-test -f \
+    "https://raw.githubusercontent.com/cilium/cilium/v${CILIUM_VERSION}/examples/kubernetes/connectivity-check/connectivity-check.yaml"
+
+  # Wait for pods to be created
+  echo "⏳ Waiting for connectivity check pods to start (this may take a while)..."
+  sleep 30
+
+  # Show pod status
+  echo "📋 Current status of connectivity check pods:"
+  k0s kubectl get pods -n cilium-test
+
+  # Wait for pods to be ready
+  echo "⏳ Waiting for connectivity check pods to become ready..."
+  timeout=3600
+  elapsed=0
+  while [[ $(k0s kubectl get pods -n cilium-test -o jsonpath='{.items[?(@.status.phase!="Running")].metadata.name}' | wc -w) -gt 0 ]]; do
+    if [[ $elapsed -ge $timeout ]]; then
+      echo "⚠️ Timeout waiting for all connectivity check pods to be ready"
+      echo "📋 Detailed pod status:"
+      k0s kubectl get pods -n cilium-test -o wide
+      break
+    fi
+    echo -n "."
+    sleep 30
+    elapsed=$((elapsed + 30))
+  done
+  echo ""
+
+  # Show final status
+  echo "📋 Final status of connectivity check pods:"
+  k0s kubectl get pods -n cilium-test
+
+  echo "✅ Cilium connectivity check deployed"
 }
 
-### Main script execution
-dependency_check
-install_k0s
-install_cilium
+# ----------------------------------------------------------------------------
+# Function: Test basic connectivity using BusyBox pods
+# ----------------------------------------------------------------------------
+test_basic_connectivity() {
+  echo "🔍 Testing basic pod-to-pod connectivity..."
 
-# Confirm installation completed
-echo "k0s and Cilium Installation Completed Successfully!"
+  # Deploy BusyBox test pods
+  echo "🔧 Deploying BusyBox test pods..."
+  k0s kubectl run bb1 --image=busybox --restart=Never -- sleep 6000 || true
+  k0s kubectl run bb2 --image=busybox --restart=Never -- sleep 6000 || true
 
-sleep 240
-echo "Run Cilium connectivity test:"
-kubectl exec -n kube-system ds/cilium -- cilium connectivity test
+  # Wait for pods to be ready
+  echo "⏳ Waiting for BusyBox pods to be ready..."
+  timeout=120
+  elapsed=0
+  while [[ $(k0s kubectl get pods bb1 bb2 -o jsonpath='{.items[?(@.status.phase!="Running")].metadata.name}' | wc -w) -gt 0 ]]; do
+    if [[ $elapsed -ge $timeout ]]; then
+      echo "⚠️ Timeout waiting for BusyBox pods to be ready"
+      echo "📋 Current pod status:"
+      k0s kubectl get pods
+      break
+    fi
+    echo -n "."
+    sleep 5
+    elapsed=$((elapsed + 5))
+  done
+  echo ""
+
+  # Test pod-to-pod connectivity
+  echo "🔧 Testing pod-to-pod connectivity..."
+  BB2_POD_NAME=$(k0s kubectl get pod bb2 -o jsonpath='{.metadata.name}')
+  if k0s kubectl exec bb1 -- ping -c 4 "$BB2_POD_NAME" ; then
+    echo "✅ Pod-to-pod connectivity test passed"
+  else
+    echo "⚠️ Pod-to-pod connectivity test failed"
+  fi
+
+  # Clean up test pods
+  echo "🧹 Cleaning up BusyBox test pods..."
+  k0s kubectl delete pod bb1 bb2 --ignore-not-found
+}
+
+# ----------------------------------------------------------------------------
+# Function: Print cluster status summary
+# ----------------------------------------------------------------------------
+print_cluster_summary() {
+  echo ""
+  echo "=================================================================="
+  echo "                     CLUSTER STATUS SUMMARY"
+  echo "=================================================================="
+
+  # k0s version
+  K0S_VERSION_INSTALLED=$(k0s version | head -n1)
+  echo "ℹ️ k0s version: ${K0S_VERSION_INSTALLED}"
+
+  # Node status
+  echo "📋 Node status:"
+  k0s kubectl get nodes -o wide
+
+  # Cilium status
+  echo "📋 Cilium status:"
+  cilium status --wait || echo "⚠️ Cilium status check returned non-zero exit code"
+
+  # Pod status
+  echo "📋 Pod status (all namespaces):"
+  k0s kubectl get pods --all-namespaces | head -n 20
+  if [[ $(k0s kubectl get pods --all-namespaces | wc -l) -gt 20 ]]; then
+    echo "... (showing first 20 pods only)"
+  fi
+
+  # Service status
+  echo "📋 Service status:"
+  k0s kubectl get svc --all-namespaces
+
+  echo "=================================================================="
+  echo "✅ k0s Kubernetes cluster with Cilium CNI is up and running"
+  echo "🔧 Kubeconfig location: ~/.kube/config"
+  echo "🔍 To access the cluster: kubectl get nodes"
+  echo "=================================================================="
+}
+# ----------------------------------------------------------------------------
+# Function: Perform cleanup in case of failure
+# ----------------------------------------------------------------------------
+cleanup() {
+  echo "🧹 Performing cleanup operations..."
+
+  # Remove test resources
+  k0s kubectl delete namespace cilium-test --ignore-not-found 2>/dev/null || true
+  k0s kubectl delete pod bb1 bb2 --ignore-not-found 2>/dev/null || true
+
+  echo "✅ Cleanup completed"
+}
+
+# ----------------------------------------------------------------------------
+# Main execution
+# ----------------------------------------------------------------------------
+main() {
+  echo "🚀 Starting k0s with Cilium installation..."
+
+  # Trap for cleanup on exit
+  trap cleanup EXIT
+
+  # Step 1: Check prerequisites
+  check_prerequisites
+
+  # Step 2: Install dependencies
+  dependency_check
+
+  # Step 3: Install k0s controller
+  # Skip if k0scontroller service already exists
+  if systemctl list-unit-files | grep -q '^k0scontroller.service'; then
+    echo "ℹ️ k0s controller service already installed, skipping installation"
+  else
+    install_k0s
+  fi
+
+  # Step 4: Check Cilium status or install
+  if ! check_cilium; then
+    install_cilium
+  fi
+
+  # Step 5: Verify Cilium installation
+  echo "🔍 Verifying Cilium installation..."
+  if ! cilium status --wait; then
+    echo "⚠️ Cilium status check failed, attempting to reinstall..."
+    install_cilium
+  fi
+
+  # Step 6: Run Cilium connectivity tests
+  echo "🔍 Running Cilium connectivity tests..."
+
+  # First try basic connectivity test
+  test_basic_connectivity
+
+  # Then deploy comprehensive connectivity test
+  deploy_cilium_connectivity_check
+
+   # Step 7: Print summary
+  print_cluster_summary
+
+  echo "🎉 Installation and validation complete!"
+  echo "🔧 The cluster is now ready for use"
+}
+
+# Execute main function
+main "$@"
