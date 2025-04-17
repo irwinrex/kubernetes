@@ -160,7 +160,8 @@ dependency_check() {
 # ----------------------------------------------------------------------------
 # Function: Install or skip k0s controller service
 # ----------------------------------------------------------------------------
-install_k0s() {
+# 
+echo 'Check the pods are up or Need Re-install'() {
   echo "🔧 Configuring k0s..."
 
   # Create k0s configuration with custom CNI and disabled kube-proxy
@@ -411,24 +412,6 @@ check_cilium() {
   echo "🔍 Checking if Cilium is already installed..."
   k0s kubectl -n kube-system get ds cilium &>/dev/null
 }
-
-# ----------------------------------------------------------------------------
-# Function: Install Cilium CNI
-# ----------------------------------------------------------------------------
-install_cilium() {
-  echo "📦 Installing Cilium..."
-
-  cilium install \
-    --version "1.15.4" \
-    --set kubeProxyReplacement=true \
-    --set k8sServiceHost=127.0.0.1 \
-    --set k8sServicePort=6443 \
-    --set routingMode=native \
-    --set ipv4NativeRoutingCIDR=10.244.0.0/16
-
-  echo "✅ Cilium installed"
-}
-
 # ----------------------------------------------------------------------------
 # Function: Test basic connectivity using BusyBox pods
 # ----------------------------------------------------------------------------
@@ -565,17 +548,20 @@ main() {
   if systemctl list-unit-files | grep -q '^k0scontroller.service'; then
     echo "ℹ️ k0s controller service already installed, skipping installation"
   else
-    install_k0s
+    # install_k0s
+    echo 'Check the pods are up or Need Re-install'
   fi
 
   if ! check_cilium; then
-    install_cilium
+    # install_cilium
+    echo 'Check the pods are up or Need Re-install'
   fi
 
   echo "🔍 Verifying Cilium installation..."
   if ! cilium status --wait; then
     echo "⚠️ Cilium status check failed, attempting reinstall..."
-    install_cilium
+    # install_cilium
+    echo 'Check the pods are up or Need Re-install'
   fi
 
   echo "🔍 Running Cilium connectivity tests..."
