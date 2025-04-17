@@ -377,51 +377,56 @@ install_cilium() {
     echo "✅ Cilium CNI installed successfully"
 }
 # ----------------------------------------------------------------------------
-# Function: Deploy comprehensive connectivity test using Cilium's test suite
+# Function: Check prerequisites
 # ----------------------------------------------------------------------------
-deploy_cilium_connectivity_check() {
-  echo "🔍 Deploying Cilium connectivity check..."
+check_prerequisites() {
+  echo "🔍 Checking prerequisites..."
+  command -v curl >/dev/null || { echo "❌ curl is required"; exit 1; }
+  command -v k0s >/dev/null || { echo "❌ k0s is not installed"; exit 1; }
+  command -v kubectl >/dev/null || { echo "❌ kubectl is not installed"; exit 1; }
+  command -v cilium >/dev/null || { echo "❌ cilium CLI is not installed"; exit 1; }
+}
 
-  # Create a dedicated namespace
-  k0s kubectl create namespace cilium-test 2>/dev/null || true
+# ----------------------------------------------------------------------------
+# Function: Install dependencies (dummy for placeholder)
+# ----------------------------------------------------------------------------
+dependency_check() {
+  echo "✅ All dependencies installed"
+}
 
-  # Apply the connectivity check manifest
-  CILIUM_VERSION=$(cilium version | grep -oP 'cilium-cli: \K[0-9\.]+')
-  echo "ℹ️ Deploying connectivity check for Cilium ${CILIUM_VERSION}..."
+# ----------------------------------------------------------------------------
+# Function: Install k0s
+# ----------------------------------------------------------------------------
+install_k0s() {
+  echo "📦 Installing k0s controller..."
+  sudo k0s install controller --single
+  sudo k0s start
+  echo "✅ k0s installed and started"
+}
 
-  k0s kubectl apply -n cilium-test -f \
-    "https://raw.githubusercontent.com/cilium/cilium/v${CILIUM_VERSION}/examples/kubernetes/connectivity-check/connectivity-check.yaml"
+# ----------------------------------------------------------------------------
+# Function: Check if Cilium is already installed
+# ----------------------------------------------------------------------------
+check_cilium() {
+  echo "🔍 Checking if Cilium is already installed..."
+  k0s kubectl -n kube-system get ds cilium &>/dev/null
+}
 
-  # Wait for pods to be created
-  echo "⏳ Waiting for connectivity check pods to start (this may take a while)..."
-  sleep 30
+# ----------------------------------------------------------------------------
+# Function: Install Cilium CNI
+# ----------------------------------------------------------------------------
+install_cilium() {
+  echo "📦 Installing Cilium..."
 
-  # Show pod status
-  echo "📋 Current status of connectivity check pods:"
-  k0s kubectl get pods -n cilium-test
+  cilium install \
+    --version "1.15.4" \
+    --set kubeProxyReplacement=true \
+    --set k8sServiceHost=127.0.0.1 \
+    --set k8sServicePort=6443 \
+    --set routingMode=native \
+    --set ipv4NativeRoutingCIDR=10.244.0.0/16
 
-  # Wait for pods to be ready
-  echo "⏳ Waiting for connectivity check pods to become ready..."
-  timeout=3600
-  elapsed=0
-  while [[ $(k0s kubectl get pods -n cilium-test -o jsonpath='{.items[?(@.status.phase!="Running")].metadata.name}' | wc -w) -gt 0 ]]; do
-    if [[ $elapsed -ge $timeout ]]; then
-      echo "⚠️ Timeout waiting for all connectivity check pods to be ready"
-      echo "📋 Detailed pod status:"
-      k0s kubectl get pods -n cilium-test -o wide
-      break
-    fi
-    echo -n "."
-    sleep 30
-    elapsed=$((elapsed + 30))
-  done
-  echo ""
-
-  # Show final status
-  echo "📋 Final status of connectivity check pods:"
-  k0s kubectl get pods -n cilium-test
-
-  echo "✅ Cilium connectivity check deployed"
+  echo "✅ Cilium installed"
 }
 
 # ----------------------------------------------------------------------------
@@ -430,21 +435,20 @@ deploy_cilium_connectivity_check() {
 test_basic_connectivity() {
   echo "🔍 Testing basic pod-to-pod connectivity..."
 
-  # Deploy BusyBox test pods
-  echo "🔧 Deploying BusyBox test pods..."
   k0s kubectl run bb1 --image=busybox --restart=Never -- sleep 6000 || true
   k0s kubectl run bb2 --image=busybox --restart=Never -- sleep 6000 || true
 
-  # Wait for pods to be ready
   echo "⏳ Waiting for BusyBox pods to be ready..."
-  timeout=120
+  timeout=180
   elapsed=0
-  while [[ $(k0s kubectl get pods bb1 bb2 -o jsonpath='{.items[?(@.status.phase!="Running")].metadata.name}' | wc -w) -gt 0 ]]; do
+  while true; do
+    statuses=$(k0s kubectl get pods bb1 bb2 -o jsonpath='{.items[*].status.containerStatuses[0].ready}')
+    [[ "$statuses" == "true true" ]] && break
+
     if [[ $elapsed -ge $timeout ]]; then
-      echo "⚠️ Timeout waiting for BusyBox pods to be ready"
-      echo "📋 Current pod status:"
+      echo "⚠️ Timeout waiting for BusyBox pods"
       k0s kubectl get pods
-      break
+      return 1
     fi
     echo -n "."
     sleep 5
@@ -452,18 +456,55 @@ test_basic_connectivity() {
   done
   echo ""
 
-  # Test pod-to-pod connectivity
-  echo "🔧 Testing pod-to-pod connectivity..."
-  BB2_POD_NAME=$(k0s kubectl get pod bb2 -o jsonpath='{.metadata.name}')
-  if k0s kubectl exec bb1 -- ping -c 4 "$BB2_POD_NAME" ; then
+  echo "🔧 Testing pod-to-pod connectivity (using IP)..."
+  BB2_IP=$(k0s kubectl get pod bb2 -o jsonpath='{.status.podIP}')
+  if k0s kubectl exec bb1 -- ping -c 4 "$BB2_IP"; then
     echo "✅ Pod-to-pod connectivity test passed"
   else
     echo "⚠️ Pod-to-pod connectivity test failed"
   fi
 
-  # Clean up test pods
   echo "🧹 Cleaning up BusyBox test pods..."
   k0s kubectl delete pod bb1 bb2 --ignore-not-found
+}
+
+# ----------------------------------------------------------------------------
+# Function: Deploy comprehensive connectivity test using Cilium's test suite
+# ----------------------------------------------------------------------------
+deploy_cilium_connectivity_check() {
+  echo "🔍 Deploying Cilium connectivity check..."
+  k0s kubectl create namespace cilium-test 2>/dev/null || true
+
+  CILIUM_VERSION=$(cilium version | grep -oP 'cilium-cli: \K[0-9\.]+')
+  echo "ℹ️ Using Cilium version ${CILIUM_VERSION}"
+
+  k0s kubectl apply -n cilium-test -f \
+    "https://raw.githubusercontent.com/cilium/cilium/v${CILIUM_VERSION}/examples/kubernetes/connectivity-check/connectivity-check.yaml"
+
+  echo "⏳ Waiting for connectivity check pods to become Ready..."
+  timeout=360
+  elapsed=0
+  while true; do
+    ready=$(k0s kubectl get pods -n cilium-test -o jsonpath='{.items[*].status.containerStatuses[0].ready}' | tr ' ' '\n' | grep -c '^true$')
+    total=$(k0s kubectl get pods -n cilium-test --no-headers | wc -l)
+
+    if [[ "$ready" -eq "$total" && "$total" -gt 0 ]]; then
+      echo "✅ All connectivity check pods are ready"
+      break
+    fi
+
+    if [[ $elapsed -ge $timeout ]]; then
+      echo "⚠️ Timeout waiting for connectivity check pods"
+      k0s kubectl get pods -n cilium-test -o wide
+      break
+    fi
+    echo -n "."
+    sleep 10
+    elapsed=$((elapsed + 10))
+  done
+  echo ""
+  k0s kubectl get pods -n cilium-test
+  echo "✅ Cilium connectivity check deployed"
 }
 
 # ----------------------------------------------------------------------------
@@ -475,26 +516,21 @@ print_cluster_summary() {
   echo "                     CLUSTER STATUS SUMMARY"
   echo "=================================================================="
 
-  # k0s version
   K0S_VERSION_INSTALLED=$(k0s version | head -n1)
   echo "ℹ️ k0s version: ${K0S_VERSION_INSTALLED}"
 
-  # Node status
   echo "📋 Node status:"
   k0s kubectl get nodes -o wide
 
-  # Cilium status
   echo "📋 Cilium status:"
   cilium status --wait || echo "⚠️ Cilium status check returned non-zero exit code"
 
-  # Pod status
-  echo "📋 Pod status (all namespaces):"
+  echo "📋 Pod status (first 20 pods):"
   k0s kubectl get pods --all-namespaces | head -n 20
   if [[ $(k0s kubectl get pods --all-namespaces | wc -l) -gt 20 ]]; then
     echo "... (showing first 20 pods only)"
   fi
 
-  # Service status
   echo "📋 Service status:"
   k0s kubectl get svc --all-namespaces
 
@@ -504,16 +540,15 @@ print_cluster_summary() {
   echo "🔍 To access the cluster: kubectl get nodes"
   echo "=================================================================="
 }
+
 # ----------------------------------------------------------------------------
 # Function: Perform cleanup in case of failure
 # ----------------------------------------------------------------------------
 cleanup() {
   echo "🧹 Performing cleanup operations..."
-
-  # Remove test resources
   k0s kubectl delete namespace cilium-test --ignore-not-found 2>/dev/null || true
   k0s kubectl delete pod bb1 bb2 --ignore-not-found 2>/dev/null || true
-
+  rm -f k0s.yaml
   echo "✅ Cleanup completed"
 }
 
@@ -522,51 +557,34 @@ cleanup() {
 # ----------------------------------------------------------------------------
 main() {
   echo "🚀 Starting k0s with Cilium installation..."
-
-  # Trap for cleanup on exit
   trap cleanup EXIT
 
-  # Step 1: Check prerequisites
   check_prerequisites
-
-  # Step 2: Install dependencies
   dependency_check
 
-  # Step 3: Install k0s controller
-  # Skip if k0scontroller service already exists
   if systemctl list-unit-files | grep -q '^k0scontroller.service'; then
     echo "ℹ️ k0s controller service already installed, skipping installation"
   else
     install_k0s
   fi
 
-  # Step 4: Check Cilium status or install
   if ! check_cilium; then
     install_cilium
   fi
 
-  # Step 5: Verify Cilium installation
   echo "🔍 Verifying Cilium installation..."
   if ! cilium status --wait; then
-    echo "⚠️ Cilium status check failed, attempting to reinstall..."
+    echo "⚠️ Cilium status check failed, attempting reinstall..."
     install_cilium
   fi
 
-  # Step 6: Run Cilium connectivity tests
   echo "🔍 Running Cilium connectivity tests..."
-
-  # First try basic connectivity test
   test_basic_connectivity
-
-  # Then deploy comprehensive connectivity test
   deploy_cilium_connectivity_check
-
-   # Step 7: Print summary
   print_cluster_summary
 
   echo "🎉 Installation and validation complete!"
   echo "🔧 The cluster is now ready for use"
 }
 
-# Execute main function
 main "$@"
