@@ -19,7 +19,7 @@ echo "ℹ️ Using Cilium CLI version: ${CILIUM_CLI_VERSION}"
 echo "ℹ️ Using k0s version: ${K0S_VERSION}"
 
 # --- Detect host IP for Kubernetes API (used by Cilium) ---
-K8S_API_HOST=$(hostname -I | awk '{print $1}')
+K8S_API_HOST=$(hostname -i | awk '{print $1}')
 echo "ℹ️ Detected API server IP: ${K8S_API_HOST}"
 
 # --- Configurable IPAM mode ---
