@@ -22,7 +22,6 @@ echo "ℹ️ Using k0s version: ${K0S_VERSION}"
 K8S_API_HOST=$(hostname -i | awk '{print $1}')
 echo "ℹ️ Detected API server IP: ${K8S_API_HOST}"
 
-# --- Configurable IPAM mode ---
 IPAM_MODE=${IPAM_MODE:-cluster-pool}
 echo "ℹ️ Using IPAM mode: ${IPAM_MODE}"
 
@@ -73,6 +72,23 @@ EOF
     echo "⚠️ System limits updated. A reboot is recommended before continuing."
     echo "Press Enter to continue without rebooting or Ctrl+C to abort"
     read -r
+  fi
+
+  # Ensure overlayfs kernel module is loaded
+  if ! lsmod | grep -q '^overlay'; then
+    echo "🔧 Loading overlay kernel module for containerd..."
+    modprobe overlay || {
+      echo "⛔ Failed to load overlay kernel module. Containers will not work."
+      exit 1
+    }
+  fi
+
+  # Ensure /var/lib/containerd exists for k0s embedded containerd
+  if [[ ! -d /var/lib/containerd ]]; then
+    echo "🔧 Creating /var/lib/containerd directory for k0s embedded containerd..."
+    mkdir -p /var/lib/containerd
+    chown root:root /var/lib/containerd
+    chmod 755 /var/lib/containerd
   fi
 
   # Check if containerd/docker is running
@@ -160,41 +176,22 @@ dependency_check() {
 # ----------------------------------------------------------------------------
 # Function: Install or skip k0s controller service
 # ----------------------------------------------------------------------------
-# 
-echo 'Check the pods are up or Need Re-install'() {
+install_k0s() {
   echo "🔧 Configuring k0s..."
 
-  # Create k0s configuration with custom CNI and disabled kube-proxy
-  echo "📄 Generating k0s config and disabling in-tree CNI/proxy..."
+  # Create k0s configuration with default CNI
+  echo "📄 Generating k0s config..."
   k0s config create > k0s.yaml
-
-  # Update the configuration with yq
-  if command -v yq &>/dev/null; then
-    echo "🔄 Updating k0s configuration for Cilium CNI..."
-    yq eval -i '.spec.network.provider = "custom" | .spec.network.kubeProxy.disabled = true' k0s.yaml
-
-    # Set cgroup driver explicitly if using systemd
-    if [[ $(stat -c %t:%T /sys/fs/cgroup/) = "0::" ]]; then
-      echo "ℹ️ Detected cgroup v2, setting runtime config accordingly..."
-      yq eval -i '.spec.runtime.cgroupDriver = "systemd"' k0s.yaml
-    fi
-  else
-    echo "⚠️ yq not available. Manually updating k0s.yaml..."
-    # Fallback method if yq is not available
-    sed -i 's/provider: kuberouter/provider: custom/g' k0s.yaml
-    sed -i 's/disabled: false/disabled: true/g' k0s.yaml
-  fi
 
   # Check if k0s service is already installed
   if [[ -f /etc/systemd/system/k0scontroller.service ]]; then
     echo "ℹ️ k0s controller service already installed, skipping install step"
-    else
+  else
     echo "🚀 Installing k0s controller service..."
     mkdir -p /etc/k0s
     cp k0s.yaml /etc/k0s/k0s.yaml
     k0s install controller --single -c /etc/k0s/k0s.yaml
-    fi
-
+  fi
 
   # Start/restart the k0s service
   echo "🔄 Starting k0s controller..."
@@ -249,28 +246,6 @@ echo 'Check the pods are up or Need Re-install'() {
     chown -R $SUDO_USER:$SUDO_USER /home/$SUDO_USER/.kube
     chmod 600 /home/$SUDO_USER/.kube/config
   fi
-
-  # Wait for Kubernetes node to become ready
-  echo "⏳ Waiting for Kubernetes node to become Ready..."
-  timeout=300
-  elapsed=0
-  while ! k0s kubectl get nodes | grep -q ' Ready '; do
-    if [[ $elapsed -ge $timeout ]]; then
-      echo "⛔ Timeout waiting for Kubernetes node to become Ready"
-      echo "📋 Current node status:"
-      k0s kubectl get nodes
-      exit 1
-    fi
-    echo -n "."
-    sleep 5
-    elapsed=$((elapsed + 5))
-  done
-  echo ""
-  echo "✅ Kubernetes node is Ready"
-
-  # Give the cluster a bit more time to stabilize
-  echo "⏳ Allowing cluster to stabilize (30 seconds)..."
-  sleep 30
 }
 
 # ----------------------------------------------------------------------------
@@ -329,6 +304,7 @@ install_cilium() {
             --set k8sServicePort=6443 \
             --set operator.replicas=1 \
             --set ipam.mode="${IPAM_MODE}" \
+            --set bpf.enableSocketLB=true \
             --set routingMode=native \
             --set ipv4NativeRoutingCIDR="${NATIVE_ROUTING_CIDR}" \
             --set clusterPoolIPv4PodCIDR="${CLUSTER_POOL_CIDR}" \
@@ -367,7 +343,6 @@ install_cilium() {
             --wait
     fi
 
-
     echo "⏳ Waiting for Cilium pods to become Ready..."
     k0s kubectl -n kube-system rollout status daemonset/cilium --timeout=300s
     k0s kubectl -n kube-system rollout status deployment/cilium-operator --timeout=300s
@@ -377,41 +352,7 @@ install_cilium() {
 
     echo "✅ Cilium CNI installed successfully"
 }
-# ----------------------------------------------------------------------------
-# Function: Check prerequisites
-# ----------------------------------------------------------------------------
-check_prerequisites() {
-  echo "🔍 Checking prerequisites..."
-  command -v curl >/dev/null || { echo "❌ curl is required"; exit 1; }
-  command -v k0s >/dev/null || { echo "❌ k0s is not installed"; exit 1; }
-  command -v kubectl >/dev/null || { echo "❌ kubectl is not installed"; exit 1; }
-  command -v cilium >/dev/null || { echo "❌ cilium CLI is not installed"; exit 1; }
-}
 
-# ----------------------------------------------------------------------------
-# Function: Install dependencies (dummy for placeholder)
-# ----------------------------------------------------------------------------
-dependency_check() {
-  echo "✅ All dependencies installed"
-}
-
-# ----------------------------------------------------------------------------
-# Function: Install k0s
-# ----------------------------------------------------------------------------
-install_k0s() {
-  echo "📦 Installing k0s controller..."
-  sudo k0s install controller --single
-  sudo k0s start
-  echo "✅ k0s installed and started"
-}
-
-# ----------------------------------------------------------------------------
-# Function: Check if Cilium is already installed
-# ----------------------------------------------------------------------------
-check_cilium() {
-  echo "🔍 Checking if Cilium is already installed..."
-  k0s kubectl -n kube-system get ds cilium &>/dev/null
-}
 # ----------------------------------------------------------------------------
 # Function: Test basic connectivity using BusyBox pods
 # ----------------------------------------------------------------------------
@@ -539,29 +480,88 @@ cleanup() {
 # Main execution
 # ----------------------------------------------------------------------------
 main() {
-  echo "🚀 Starting k0s with Cilium installation..."
+  echo "🚀 Starting k0s installation (phase 1: vanilla k0s)..."
   trap cleanup EXIT
 
   check_prerequisites
   dependency_check
 
+  # --- Install k0s if not present ---
   if systemctl list-unit-files | grep -q '^k0scontroller.service'; then
     echo "ℹ️ k0s controller service already installed, skipping installation"
   else
-    # install_k0s
-    echo 'Check the pods are up or Need Re-install'
+    install_k0s
   fi
 
-  if ! check_cilium; then
-    # install_cilium
-    echo 'Check the pods are up or Need Re-install'
+  # --- Wait for node to be Ready with default CNI ---
+  echo "⏳ Waiting for Kubernetes node to become Ready (default CNI)..."
+  timeout=300
+  elapsed=0
+  while true; do
+    status=$(k0s kubectl get nodes -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "Unknown")
+    if [[ "$status" == "True" ]]; then
+      echo ""
+      echo "✅ Kubernetes node is Ready"
+      break
+    fi
+    if [[ $elapsed -ge $timeout ]]; then
+      echo "⛔ Timeout waiting for Kubernetes node to become Ready"
+      k0s kubectl get nodes -o wide
+      k0s kubectl describe node
+      exit 1
+    fi
+    echo -n "."
+    sleep 5
+    elapsed=$((elapsed + 5))
+  done
+
+  echo "📋 Core pods status:"
+  k0s kubectl get pods -A
+
+  # --- Now patch k0s config for Cilium ---
+  echo "🚀 Patching k0s config for Cilium CNI..."
+
+  if command -v yq &>/dev/null; then
+    yq eval -i '.spec.network.provider = "custom" | .spec.network.kubeProxy.disabled = true' /etc/k0s/k0s.yaml
+  else
+    sed -i 's/provider: .*/provider: custom/' /etc/k0s/k0s.yaml
+    sed -i 's/disabled: false/disabled: true/' /etc/k0s/k0s.yaml
   fi
 
+  # Restart k0scontroller to apply new network config
+  echo "🔄 Restarting k0scontroller to apply Cilium CNI config..."
+  systemctl restart k0scontroller
+
+  # Wait for node to be Ready again
+  echo "⏳ Waiting for Kubernetes node to become Ready (after Cilium CNI)..."
+  timeout=300
+  elapsed=0
+  while true; do
+    status=$(k0s kubectl get nodes -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "Unknown")
+    if [[ "$status" == "True" ]]; then
+      echo ""
+      echo "✅ Kubernetes node is Ready with Cilium CNI"
+      break
+    fi
+    if [[ $elapsed -ge $timeout ]]; then
+      echo "⛔ Timeout waiting for Kubernetes node to become Ready after Cilium"
+      k0s kubectl get nodes -o wide
+      k0s kubectl describe node
+      exit 1
+    fi
+    echo -n "."
+    sleep 5
+    elapsed=$((elapsed + 5))
+  done
+
+  # --- Install Cilium ---
+  install_cilium
+
+  # --- Verify Cilium ---
   echo "🔍 Verifying Cilium installation..."
   if ! cilium status --wait; then
     echo "⚠️ Cilium status check failed, attempting reinstall..."
-    # install_cilium
-    echo 'Check the pods are up or Need Re-install'
+    install_cilium
   fi
 
   echo "🔍 Running Cilium connectivity tests..."
