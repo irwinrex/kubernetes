@@ -276,81 +276,123 @@ check_cilium() {
 # Function: Install or upgrade Cilium via Helm
 # ----------------------------------------------------------------------------
 install_cilium() {
-    echo "🚀 Preparing to deploy Cilium CNI..."
+  echo "🚀 Preparing to deploy Cilium CNI..."
 
-    # Add Helm repository for Cilium
-    echo "🔧 Setting up Helm repository..."
-    helm repo add cilium https://helm.cilium.io/ > /dev/null || true
-    helm repo update > /dev/null
-
-    # Get latest chart version
-    CHART_VER=$(helm search repo cilium/cilium --versions | awk 'NR==2{print $2}')
-    echo "ℹ️ Using Cilium chart version: ${CHART_VER}"
-    # Replace with your actual CIDR ranges
-    NATIVE_ROUTING_CIDR="10.0.0.0/16"
-    CLUSTER_POOL_CIDR="10.1.0.0/16"
-    CLUSTER_POOL_MASK_SIZE="24"
-
-    # Check if Cilium is already installed
-    if helm ls -n kube-system | grep -q '^cilium\s'; then
-        echo "🔄 Upgrading existing Cilium installation..."
-
-        helm upgrade cilium cilium/cilium \
-            --version "${CHART_VER}" \
-            --namespace kube-system \
-            --set upgradeCompatibility="${CILIUM_CURRENT_MINOR_VERSION:-}" \
-            --set kubeProxyReplacement=true \
-            --set k8sServiceHost="${K8S_API_HOST}" \
-            --set k8sServicePort=6443 \
-            --set operator.replicas=1 \
-            --set ipam.mode="${IPAM_MODE}" \
-            --set bpf.enableSocketLB=true \
-            --set routingMode=native \
-            --set ipv4NativeRoutingCIDR="${NATIVE_ROUTING_CIDR}" \
-            --set clusterPoolIPv4PodCIDR="${CLUSTER_POOL_CIDR}" \
-            --set clusterPoolIPv4MaskSize="${CLUSTER_POOL_MASK_SIZE}" \
-            --set bpf.masquerade=true \
-            --set hubble.enabled=true \
-            --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,http}" \
-            --set hubble.relay.enabled=true \
-            --set prometheus.enabled=true \
-            --set operator.prometheus.enabled=true \
-            --set debug.enabled=true \
-            --wait
+  # --- Patch k0s.yaml for Cilium and eBPF ---
+  if [[ -f /etc/k0s/k0s.yaml ]]; then
+    echo "🔧 Patching /etc/k0s/k0s.yaml for Cilium and eBPF..."
+    if command -v yq &>/dev/null; then
+      yq eval -i '
+        .spec.network.provider = "custom" |
+        .spec.network.kubeProxy.disabled = true |
+        .spec.network.cni.conf = {
+        "cniVersion": "'$(helm search repo cilium/cilium --versions | awk 'NR==2{print $2}')'",
+        "name": "cilium",
+        "plugins": []
+        }
+      ' /etc/k0s/k0s.yaml
     else
-        echo "🔧 Installing Cilium CNI..."
-
-        helm install cilium cilium/cilium \
-            --version "${CHART_VER}" \
-            --namespace kube-system \
-            --create-namespace \
-            --set kubeProxyReplacement=true \
-            --set k8sServiceHost="${K8S_API_HOST}" \
-            --set k8sServicePort=6443 \
-            --set operator.replicas=1 \
-            --set ipam.mode="${IPAM_MODE}" \
-            --set routingMode=native \
-            --set ipv4NativeRoutingCIDR="${NATIVE_ROUTING_CIDR}" \
-            --set clusterPoolIPv4PodCIDR="${CLUSTER_POOL_CIDR}" \
-            --set clusterPoolIPv4MaskSize="${CLUSTER_POOL_MASK_SIZE}" \
-            --set bpf.masquerade=true \
-            --set hubble.enabled=true \
-            --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,http}" \
-            --set hubble.relay.enabled=true \
-            --set prometheus.enabled=true \
-            --set operator.prometheus.enabled=true \
-            --set debug.enabled=true \
-            --wait
+      sed -i 's/provider: .*/provider: custom/' /etc/k0s/k0s.yaml
+      sed -i 's/disabled: false/disabled: true/' /etc/k0s/k0s.yaml
     fi
+    systemctl restart k0scontroller
+    echo "🔄 Restarted k0scontroller to apply Cilium network config"
+    # Wait for node to be Ready again
+    echo "⏳ Waiting for Kubernetes node to become Ready (after Cilium patch)..."
+    timeout=300
+    elapsed=0
+    while true; do
+      status=$(k0s kubectl get nodes -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "Unknown")
+      if [[ "$status" == "True" ]]; then
+        echo ""
+        echo "✅ Kubernetes node is Ready with Cilium config"
+        break
+      fi
+      if [[ $elapsed -ge $timeout ]]; then
+        echo "⛔ Timeout waiting for Kubernetes node to become Ready after Cilium patch"
+        k0s kubectl get nodes -o wide
+        k0s kubectl describe node
+        exit 1
+      fi
+      echo -n "."
+      sleep 5
+      elapsed=$((elapsed + 5))
+    done
+  fi
 
-    echo "⏳ Waiting for Cilium pods to become Ready..."
-    k0s kubectl -n kube-system rollout status daemonset/cilium --timeout=300s
-    k0s kubectl -n kube-system rollout status deployment/cilium-operator --timeout=300s
+  # Add Helm repository for Cilium
+  echo "🔧 Setting up Helm repository..."
+  helm repo add cilium https://helm.cilium.io/ > /dev/null || true
+  helm repo update > /dev/null
 
-    echo "⏳ Allowing Cilium networking to stabilize (60 seconds)..."
-    sleep 60
+  # Get latest chart version
+  CHART_VER=$(helm search repo cilium/cilium --versions | awk 'NR==2{print $2}')
+  echo "ℹ️ Using Cilium chart version: ${CHART_VER}"
+  # Replace with your actual CIDR ranges
+  NATIVE_ROUTING_CIDR="10.0.0.0/16"
+  CLUSTER_POOL_CIDR="10.1.0.0/16"
+  CLUSTER_POOL_MASK_SIZE="24"
 
-    echo "✅ Cilium CNI installed successfully"
+  # Check if Cilium is already installed
+  if helm ls -n kube-system | grep -q '^cilium\s'; then
+    echo "🔄 Upgrading existing Cilium installation..."
+
+    helm upgrade cilium cilium/cilium \
+      --version "${CHART_VER}" \
+      --namespace kube-system \
+      --set upgradeCompatibility="${CILIUM_CURRENT_MINOR_VERSION:-}" \
+      --set kubeProxyReplacement=true \
+      --set k8sServiceHost="${K8S_API_HOST}" \
+      --set k8sServicePort=6443 \
+      --set operator.replicas=1 \
+      --set ipam.mode="${IPAM_MODE}" \
+      --set bpf.enableSocketLB=true \
+      --set routingMode=native \
+      --set ipv4NativeRoutingCIDR="${NATIVE_ROUTING_CIDR}" \
+      --set clusterPoolIPv4PodCIDR="${CLUSTER_POOL_CIDR}" \
+      --set clusterPoolIPv4MaskSize="${CLUSTER_POOL_MASK_SIZE}" \
+      --set bpf.masquerade=true \
+      --set hubble.enabled=true \
+      --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,http}" \
+      --set hubble.relay.enabled=true \
+      --set prometheus.enabled=true \
+      --set operator.prometheus.enabled=true \
+      --set debug.enabled=true \
+      --wait
+  else
+    echo "🔧 Installing Cilium CNI..."
+
+    helm install cilium cilium/cilium \
+      --version "${CHART_VER}" \
+      --namespace kube-system \
+      --create-namespace \
+      --set kubeProxyReplacement=true \
+      --set k8sServiceHost="${K8S_API_HOST}" \
+      --set k8sServicePort=6443 \
+      --set operator.replicas=1 \
+      --set ipam.mode="${IPAM_MODE}" \
+      --set routingMode=native \
+      --set ipv4NativeRoutingCIDR="${NATIVE_ROUTING_CIDR}" \
+      --set clusterPoolIPv4PodCIDR="${CLUSTER_POOL_CIDR}" \
+      --set clusterPoolIPv4MaskSize="${CLUSTER_POOL_MASK_SIZE}" \
+      --set bpf.masquerade=true \
+      --set hubble.enabled=true \
+      --set hubble.metrics.enabled="{dns,drop,tcp,flow,icmp,http}" \
+      --set hubble.relay.enabled=true \
+      --set prometheus.enabled=true \
+      --set operator.prometheus.enabled=true \
+      --set debug.enabled=true \
+      --wait
+  fi
+
+  echo "⏳ Waiting for Cilium pods to become Ready..."
+  k0s kubectl -n kube-system rollout status daemonset/cilium --timeout=300s
+  k0s kubectl -n kube-system rollout status deployment/cilium-operator --timeout=300s
+
+  echo "⏳ Allowing Cilium networking to stabilize (60 seconds)..."
+  sleep 60
+
+  echo "✅ Cilium CNI installed successfully"
 }
 
 # ----------------------------------------------------------------------------
