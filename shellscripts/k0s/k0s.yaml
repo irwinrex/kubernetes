@@ -1,0 +1,80 @@
+apiVersion: k0s.k0sproject.io/v1beta1
+kind: ClusterConfig
+metadata:
+  name: k0s
+  namespace: kube-system
+spec:
+  api:
+    address: 192.168.29.134
+    ca:
+      certificatesExpireAfter: 8760h0m0s
+      expiresAfter: 87600h0m0s
+    k0sApiPort: 9443
+    port: 6443
+    sans:
+    - 192.168.29.134
+    - 10.0.0.93
+    - 2405:201:e02b:3185:14d0:ae98:48fb:a7a7
+    - fe80::f5ae:e62c:659a:e2ef
+    - fe80::dc94:59ff:fe8f:1c95
+    - fe80::a002:4eff:fe70:581a
+    - fe80::c40d:9aff:fe70:1a08
+    - fe80::f8a9:e1ff:fe64:ef22
+    - fe80::805b:48ff:fe32:177c
+    - fe80::1438:c9ff:fe3a:37a7
+  controllerManager: {}
+  extensions:
+    helm:
+      concurrencyLevel: 5
+  installConfig:
+    users:
+      etcdUser: etcd
+      kineUser: kube-apiserver
+      konnectivityUser: konnectivity-server
+      kubeAPIserverUser: kube-apiserver
+      kubeSchedulerUser: kube-scheduler
+  konnectivity:
+    adminPort: 8133
+    agentPort: 8132
+  network:
+    clusterDomain: cluster.local
+    dualStack:
+      enabled: false
+    kubeProxy:
+      iptables:
+        minSyncPeriod: 0s
+        syncPeriod: 0s
+      ipvs:
+        minSyncPeriod: 0s
+        syncPeriod: 0s
+        tcpFinTimeout: 0s
+        tcpTimeout: 0s
+        udpTimeout: 0s
+      metricsBindAddress: 0.0.0.0:10249
+      mode: iptables
+      nftables:
+        minSyncPeriod: 0s
+        syncPeriod: 0s
+    kuberouter:
+      autoMTU: true
+      hairpin: Enabled
+      metricsPort: 8080
+    nodeLocalLoadBalancing:
+      enabled: false
+      envoyProxy:
+        apiServerBindPort: 7443
+        konnectivityServerBindPort: 7132
+      type: EnvoyProxy
+    podCIDR: 10.244.0.0/16
+    provider: kuberouter
+    serviceCIDR: 10.96.0.0/12
+  scheduler: {}
+  storage:
+    etcd:
+      ca:
+        certificatesExpireAfter: 8760h0m0s
+        expiresAfter: 87600h0m0s
+      peerAddress: 192.168.29.134
+    type: etcd
+  telemetry:
+    enabled: false
