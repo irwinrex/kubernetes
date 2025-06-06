@@ -1,3 +1,10 @@
+# Start installation
+
+```
+chmod +x main.sh
+sudo ./main.sh
+```
+
 # Kubernetes (k0s) + Cilium Firewall Configuration Guide
 
 This guide explains how to configure `firewalld` to allow necessary network traffic for a Kubernetes cluster using **k0s** and **Cilium** CNI, including the **Hubble Relay** component.
