@@ -1,0 +1,31 @@
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: inflate
+# spec:
+#   replicas: 5
+#   selector:
+#     matchLabels:
+#       app: inflate
+#   template:
+#     metadata:
+#       labels:
+#         app: inflate
+#     spec:
+#       tolerations:
+#         - key: "default.com/defalut"
+#           operator: "Equal"
+#           value: "true"
+#           effect: "NoSchedule"
+#       # This terminationGracePeriodSeconds allows the pod to be drained quickly
+#       # by Karpenter during consolidation.
+#       terminationGracePeriodSeconds: 0
+#       containers:
+#         - name: inflate
+#           image: public.ecr.aws/eks-distro/kubernetes/pause:3.7
+#           # This is the key: we request resources that won't fit on your small
+#           # Fargate instances, forcing Karpenter to provision a new EC2 node.
+#           resources:
+#             requests:
+#               cpu: "1" # Request 1 full vCPU
+#               memory: 1Gi # Request 1 GiB of Memory
